@@ -1,0 +1,73 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; img-src 'self' data: http://127.0.0.1:8787;" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hoshino Agent Console</title>
+    <link rel="stylesheet" href="./panel.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Desktop Pet Multi-Agent</p>
+          <h1>Hoshino 控制台</h1>
+          <p class="sub">支持聊天、图片输入、语音输入、工具调用、任务时间线、终端与 GUI 联动。</p>
+        </div>
+        <button id="voiceBtn" class="ghost">语音输入</button>
+      </header>
+
+      <section class="dashboard-grid">
+        <section class="capabilities card" id="capabilities"></section>
+        <section class="task card" id="taskPanel">
+          <div class="section-head">
+            <h2>任务面板</h2>
+            <span id="taskStatus" class="status-pill">Idle</span>
+          </div>
+          <div id="taskContent" class="task-content">
+            <p class="empty">等待你的第一个任务。</p>
+          </div>
+        </section>
+      </section>
+
+      <section class="workspace-grid">
+        <section class="chat card">
+          <div class="section-head">
+            <h2>对话流</h2>
+          </div>
+          <div id="chatLog" class="chat-log"></div>
+        </section>
+
+        <aside class="sidebar">
+          <section class="timeline card">
+            <div class="section-head">
+              <h2>工具时间线</h2>
+            </div>
+            <div id="timeline" class="timeline-list">
+              <p class="empty">工具调用会显示在这里。</p>
+            </div>
+          </section>
+
+          <section class="artifacts card">
+            <div class="section-head">
+              <h2>截图与产物</h2>
+            </div>
+            <div id="artifacts" class="artifact-list">
+              <p class="empty">截图和产物会显示在这里。</p>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <form class="composer card" id="composer">
+        <textarea id="message" placeholder="给桌宠下达指令，例如：先截图，再帮我分析当前界面，然后打开终端查看当前目录"></textarea>
+        <div class="composer-row">
+          <input id="imageInput" type="file" accept="image/*" />
+          <button type="submit">发送</button>
+        </div>
+      </form>
+    </main>
+    <script src="./panel.js"></script>
+  </body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hoshino Pet</title>
+    <link rel="stylesheet" href="./pet.css" />
+
+    <!-- Live2D Cubism Core — must load before ES modules -->
+    <script src="../live2d/Core/live2dcubismcore.js"></script>
+
+    <!-- Import map: resolve @framework/* to Live2D Framework -->
+    <script type="importmap">
+    {
+      "imports": {
+        "@framework/live2dcubismframework": "./live2d_framework_shim.js",
+        "@framework/": "../live2d/Framework/",
+        "live2d_adapter": "./live2d_adapter.js"
+      }
+    }
+    </script>
+  </head>
+  <body>
+    <!-- Live2D canvas: shown only when a Cubism model is loaded.
+         CSS avatar (below) uses pointer-events:none so clicks pass through.
+         When Live2D canvas is visible it renders the 3D model. -->
+    <canvas
+      id="live2d-canvas"
+      width="220"
+      height="320"
+      style="display:none; position:absolute; top:0; left:0; z-index:1;"
+    ></canvas>
+
+    <div class="pet-shell" id="petShell">
+      <div class="aura"></div>
+      <div class="watch-dot" id="watchDot" title="持续陪伴状态"></div>
+      <div class="pet-bubble" id="petBubble">右键开启持续陪伴，双击也可以切换。</div>
+
+      <!-- CSS avatar: pointer-events:none so Live2D canvas receives clicks -->
+      <div class="avatar" id="petBody" aria-label="Hoshino digital companion" style="pointer-events:none;">
+        <div class="hair hair-back"></div>
+        <div class="side-lock left"></div>
+        <div class="side-lock right"></div>
+        <div class="body">
+          <div class="cape"></div>
+          <div class="torso">
+            <div class="collar"></div>
+            <div class="chest-line"></div>
+            <div class="skirt"></div>
+          </div>
+          <div class="arm left"></div>
+          <div class="arm right"></div>
+          <div class="rapier"></div>
+        </div>
+        <div class="head">
+          <div class="face">
+            <div class="eye left"></div>
+            <div class="eye right"></div>
+            <div class="mouth" id="mouth"></div>
+          </div>
+          <div class="bangs"></div>
+          <div class="hair-clip"></div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="./pet.js"></script>
+  </body>
+</html>

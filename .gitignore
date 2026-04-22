@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.egg-info/
+*.log
+node_modules/
+dist/
+memory/
+artifacts/
+.env
+.claude/
+.vscode/
+RESUME_NOTES.md

@@ -1,0 +1,152 @@
+[
+  {
+    "id": "collab-01",
+    "name": "Screen observation routing",
+    "description": "用户发送截图请求，系统应路由到 desktop-agent 并调用 screen.capture 工具",
+    "turns": [
+      {
+        "message": "帮我截个屏看看",
+        "attachments": [],
+        "expected_delegate": "desktop-agent",
+        "expected_tool_calls": ["screen.capture"],
+        "forbidden_tools": ["terminal.run"]
+      }
+    ]
+  },
+  {
+    "id": "collab-02",
+    "name": "Terminal command delegation",
+    "description": "用户请求运行命令，系统应路由到 terminal-agent 并调用 terminal.run",
+    "turns": [
+      {
+        "message": "运行 pytest -v",
+        "attachments": [],
+        "expected_delegate": "terminal-agent",
+        "expected_tool_calls": ["terminal.run"],
+        "forbidden_tools": ["screen.capture"]
+      }
+    ]
+  },
+  {
+    "id": "collab-03",
+    "name": "Coding task routing",
+    "description": "用户询问代码问题，应路由到 terminal-agent（用于代码执行）",
+    "turns": [
+      {
+        "message": "帮我修复这个 bug：TypeError: list index out of range",
+        "attachments": [],
+        "expected_delegate": "terminal-agent",
+        "expected_tool_calls": [],
+        "forbidden_tools": []
+      }
+    ]
+  },
+  {
+    "id": "collab-04",
+    "name": "Memory profile update",
+    "description": "用户自我介绍，系统应更新画像但不调用工具",
+    "turns": [
+      {
+        "message": "我叫李明，是一名 AI 研究员，正在找工作",
+        "attachments": [],
+        "expected_delegate": "companion-agent",
+        "expected_tool_calls": [],
+        "forbidden_tools": ["screen.capture", "terminal.run"]
+      },
+      {
+        "message": "叫我小李就行",
+        "attachments": [],
+        "expected_delegate": "companion-agent",
+        "expected_tool_calls": [],
+        "forbidden_tools": ["screen.capture", "terminal.run"],
+        "expected_profile_field": "preferred_name"
+      }
+    ]
+  },
+  {
+    "id": "collab-05",
+    "name": "Continuous companion mode",
+    "description": "用户开启持续观察模式，应持续路由到 desktop-agent",
+    "turns": [
+      {
+        "message": "进入数字分身模式，持续帮我看着屏幕",
+        "attachments": [],
+        "expected_delegate": "desktop-agent",
+        "expected_tool_calls": ["screen.capture"],
+        "forbidden_tools": ["terminal.run"]
+      }
+    ]
+  },
+  {
+    "id": "collab-06",
+    "name": "Skill injection — code helper",
+    "description": "提到'写个Python函数'应触发 code-helper skill 并路由到 terminal-agent",
+    "turns": [
+      {
+        "message": "帮我写个Python函数来计算斐波那契数列",
+        "attachments": [],
+        "expected_delegate": "terminal-agent",
+        "expected_tool_calls": [],
+        "forbidden_tools": ["screen.capture"]
+      }
+    ]
+  },
+  {
+    "id": "collab-07",
+    "name": "Skill injection — english tutor",
+    "description": "提到翻译应触发 english-tutor skill 并路由到 companion-agent",
+    "turns": [
+      {
+        "message": "帮我翻译一下这个英文：The quick brown fox",
+        "attachments": [],
+        "expected_delegate": "companion-agent",
+        "expected_tool_calls": [],
+        "forbidden_tools": ["terminal.run", "screen.capture"]
+      }
+    ]
+  },
+  {
+    "id": "collab-08",
+    "name": "Multi-turn memory continuity",
+    "description": "两轮对话后，系统应能记住第一轮提到的项目名称",
+    "turns": [
+      {
+        "message": "我最近在做一个 Hoshino Agent 项目",
+        "attachments": [],
+        "expected_delegate": "companion-agent",
+        "expected_tool_calls": [],
+        "forbidden_tools": []
+      },
+      {
+        "message": "我上面说的项目叫什么名字？",
+        "attachments": [],
+        "expected_delegate": "companion-agent",
+        "expected_tool_calls": [],
+        "forbidden_tools": ["terminal.run", "screen.capture"],
+        "memory_expectation": "Hoshino"
+      }
+    ]
+  },
+  {
+    "id": "collab-09",
+    "name": "Voice request routing",
+    "description": "语音相关请求应路由到 companion-agent",
+    "turns": [
+      {
+        "message": "用语音朗读一下这段话",
+        "attachments": [],
+        "expected_delegate": "companion-agent",
+        "expected_tool_calls": [],
+        "forbidden_tools": ["terminal.run", "screen.capture"]
+      }
+    ]
+  },
+  {
+    "id": "collab-10",
+    "name": "MCP tool discovery",
+    "description": "系统启动后应能通过 MCP 发现 filesystem 工具",
+    "turns": [],
+    "expected_mcp_tools_min": 1,
+    "expected_mcp_servers_min": 1
+  }
+]

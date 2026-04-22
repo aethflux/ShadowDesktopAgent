@@ -1,0 +1,315 @@
+:root {
+  --skin: #ffe3d2;
+  --line: #5c4038;
+  --hair: #c98245;
+  --hair-deep: #8f4f2b;
+  --cream: #fff8ed;
+  --white: #fffdf8;
+  --red: #d84d45;
+  --gold: #f4c56a;
+  --steel: #c8d7e5;
+  --shadow: rgba(72, 45, 32, 0.22);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.pet-shell {
+  position: relative;
+  width: 220px;
+  height: 320px;
+  cursor: grab;
+  user-select: none;
+}
+
+.pet-shell:active { cursor: grabbing; }
+
+.aura {
+  position: absolute;
+  left: 44px;
+  top: 28px;
+  width: 136px;
+  height: 236px;
+  border-radius: 44% 44% 38% 38%;
+  background:
+    radial-gradient(circle at 45% 18%, rgba(255, 255, 255, 0.9), transparent 22%),
+    linear-gradient(180deg, rgba(255, 240, 210, 0.55), rgba(216, 77, 69, 0.18));
+  filter: blur(1px);
+  animation: auraPulse 3.8s ease-in-out infinite;
+}
+
+.avatar {
+  position: absolute;
+  left: 44px;
+  top: 18px;
+  width: 138px;
+  height: 280px;
+  pointer-events: none;
+  transform-origin: 50% 80%;
+  animation: breathe 3.2s ease-in-out infinite;
+}
+
+.head {
+  position: absolute;
+  left: 29px;
+  top: 25px;
+  width: 78px;
+  height: 82px;
+  z-index: 5;
+  animation: headTilt 5.8s ease-in-out infinite;
+}
+
+.face {
+  position: absolute;
+  left: 12px;
+  top: 19px;
+  width: 54px;
+  height: 58px;
+  border: 2px solid var(--line);
+  border-radius: 45% 45% 42% 42%;
+  background: var(--skin);
+  z-index: 4;
+}
+
+.eye {
+  position: absolute;
+  top: 21px;
+  width: 8px;
+  height: 12px;
+  border-radius: 50%;
+  background: #69483f;
+  animation: blink 4.6s infinite;
+}
+
+.eye.left { left: 13px; }
+.eye.right { right: 13px; }
+
+.mouth {
+  position: absolute;
+  left: 22px;
+  bottom: 11px;
+  width: 11px;
+  height: 5px;
+  border-bottom: 2px solid var(--line);
+  border-radius: 0 0 12px 12px;
+}
+
+.pet-shell.talking .mouth {
+  height: 9px;
+  border: 2px solid var(--line);
+  border-top: 0;
+  background: rgba(216, 77, 69, 0.18);
+  animation: talk 260ms ease-in-out infinite;
+}
+
+.hair-back {
+  position: absolute;
+  left: 21px;
+  top: 14px;
+  width: 96px;
+  height: 150px;
+  border: 2px solid var(--line);
+  border-radius: 50% 50% 44% 44%;
+  background: linear-gradient(140deg, var(--hair), var(--hair-deep));
+  z-index: 1;
+  animation: hairSway 4.8s ease-in-out infinite;
+}
+
+.bangs {
+  position: absolute;
+  left: 5px;
+  top: 6px;
+  width: 68px;
+  height: 42px;
+  background: linear-gradient(145deg, #d89552, var(--hair-deep));
+  clip-path: polygon(0 0, 100% 0, 93% 80%, 68% 55%, 50% 100%, 31% 58%, 12% 84%);
+  border-radius: 34px 34px 10px 10px;
+  z-index: 6;
+}
+
+.side-lock {
+  position: absolute;
+  top: 56px;
+  width: 22px;
+  height: 128px;
+  border: 2px solid var(--line);
+  border-radius: 16px 16px 22px 22px;
+  background: linear-gradient(180deg, var(--hair), var(--hair-deep));
+  z-index: 3;
+  animation: lockSway 4.2s ease-in-out infinite;
+}
+
+.side-lock.left { left: 18px; transform-origin: top right; }
+.side-lock.right { right: 22px; transform-origin: top left; animation-delay: -1s; }
+
+.hair-clip {
+  position: absolute;
+  right: 10px;
+  top: 19px;
+  width: 16px;
+  height: 8px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--gold);
+  z-index: 7;
+}
+
+.body {
+  position: absolute;
+  left: 24px;
+  top: 100px;
+  width: 92px;
+  height: 145px;
+  z-index: 2;
+}
+
+.cape {
+  position: absolute;
+  left: 5px;
+  top: 6px;
+  width: 84px;
+  height: 112px;
+  border-radius: 28px 28px 42px 42px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 229, 215, 0.72));
+  box-shadow: 0 14px 24px var(--shadow);
+  animation: capeDrift 3.9s ease-in-out infinite;
+}
+
+.torso {
+  position: absolute;
+  left: 21px;
+  top: 0;
+  width: 52px;
+  height: 94px;
+  border: 2px solid var(--line);
+  border-radius: 18px 18px 16px 16px;
+  background: linear-gradient(180deg, var(--white), var(--cream));
+  z-index: 3;
+}
+
+.collar {
+  position: absolute;
+  left: 11px;
+  top: 5px;
+  width: 30px;
+  height: 18px;
+  border-bottom: 3px solid var(--red);
+  border-radius: 0 0 18px 18px;
+}
+
+.chest-line {
+  position: absolute;
+  left: 24px;
+  top: 22px;
+  width: 4px;
+  height: 54px;
+  border-radius: 99px;
+  background: var(--red);
+}
+
+.skirt {
+  position: absolute;
+  left: -8px;
+  bottom: -24px;
+  width: 68px;
+  height: 34px;
+  border: 2px solid var(--line);
+  border-radius: 8px 8px 24px 24px;
+  background: linear-gradient(180deg, var(--white), #f0d6c9);
+}
+
+.arm {
+  position: absolute;
+  top: 23px;
+  width: 16px;
+  height: 70px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--cream);
+  z-index: 4;
+}
+
+.arm.left { left: 8px; transform: rotate(12deg); }
+.arm.right { right: 6px; transform: rotate(-18deg); animation: handWave 5.4s ease-in-out infinite; }
+
+.rapier {
+  position: absolute;
+  right: 0;
+  top: 23px;
+  width: 5px;
+  height: 104px;
+  border-radius: 99px;
+  background: linear-gradient(180deg, var(--steel), #f8fbff);
+  transform: rotate(-16deg);
+  z-index: 1;
+}
+
+.rapier::before {
+  content: "";
+  position: absolute;
+  left: -9px;
+  top: 62px;
+  width: 24px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--gold);
+}
+
+.watch-dot {
+  position: absolute;
+  right: 22px;
+  top: 20px;
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(92, 64, 56, 0.72);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  z-index: 20;
+}
+
+.watch-dot.active {
+  background: var(--red);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+.pet-bubble {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  max-width: 180px;
+  padding: 9px 11px;
+  border: 1px solid rgba(92, 64, 56, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--line);
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: 0 12px 28px var(--shadow);
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 30;
+}
+
+.pet-bubble.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes auraPulse { 0%, 100% { transform: scale(1); opacity: 0.82; } 50% { transform: scale(1.04); opacity: 1; } }
+@keyframes breathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.015); } }
+@keyframes headTilt { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(2deg); } }
+@keyframes blink { 0%, 44%, 48%, 100% { transform: scaleY(1); } 46% { transform: scaleY(0.08); } }
+@keyframes talk { 0%, 100% { transform: scaleY(0.7); } 50% { transform: scaleY(1.18); } }
+@keyframes hairSway { 0%, 100% { transform: rotate(-1deg); } 50% { transform: rotate(1.5deg); } }
+@keyframes lockSway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+@keyframes capeDrift { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
+@keyframes handWave { 0%, 100% { transform: rotate(-18deg); } 50% { transform: rotate(-30deg); } }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(216, 77, 69, 0.42); } 50% { box-shadow: 0 0 0 8px rgba(216, 77, 69, 0); } }

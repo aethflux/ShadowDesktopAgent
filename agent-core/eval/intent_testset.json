@@ -1,0 +1,40 @@
+[
+  {"message": "帮我看看屏幕现在在做什么", "expected_intent": "screen_observation", "expected_delegate": "desktop-agent"},
+  {"message": "截个图看看", "expected_intent": "screen_observation", "expected_delegate": "desktop-agent"},
+  {"message": "你看看我当前的窗口", "expected_intent": "screen_observation", "expected_delegate": "desktop-agent"},
+  {"message": "look at my screen and tell me what I'm doing", "expected_intent": "screen_observation", "expected_delegate": "desktop-agent"},
+  {"message": "what do you see on my screen", "expected_intent": "screen_observation", "expected_delegate": "desktop-agent"},
+
+  {"message": "进入持续陪伴模式，帮我盯着屏幕", "expected_intent": "continuous_companion", "expected_delegate": "desktop-agent"},
+  {"message": "数字分身模式常驻看着我", "expected_intent": "continuous_companion", "expected_delegate": "desktop-agent"},
+  {"message": "companion mode watch continuously please", "expected_intent": "continuous_companion", "expected_delegate": "desktop-agent"},
+
+  {"message": "运行一下 pytest", "expected_intent": "terminal", "expected_delegate": "terminal-agent"},
+  {"message": "帮我在终端里执行 git status", "expected_intent": "terminal", "expected_delegate": "terminal-agent"},
+  {"message": "npm install 一下依赖", "expected_intent": "terminal", "expected_delegate": "terminal-agent"},
+  {"message": "run uvicorn on port 8787", "expected_intent": "terminal", "expected_delegate": "terminal-agent"},
+  {"message": "开个 powershell 看看磁盘", "expected_intent": "terminal", "expected_delegate": "terminal-agent"},
+
+  {"message": "帮我修一下这个报错", "expected_intent": "coding", "expected_delegate": "terminal-agent"},
+  {"message": "重构一下 router.py 里的分类函数", "expected_intent": "coding", "expected_delegate": "terminal-agent"},
+  {"message": "给这个 typescript 文件加类型", "expected_intent": "coding", "expected_delegate": "terminal-agent"},
+  {"message": "implement a retry helper", "expected_intent": "coding", "expected_delegate": "terminal-agent"},
+  {"message": "写个测试覆盖这个 function", "expected_intent": "coding", "expected_delegate": "terminal-agent"},
+
+  {"message": "记住我叫拓也，是一个做 AI Agent 的研究员", "expected_intent": "memory_profile", "expected_delegate": "companion-agent"},
+  {"message": "叫我 Taku 就行", "expected_intent": "memory_profile", "expected_delegate": "companion-agent"},
+  {"message": "我的目标是今年进入头部 AI 公司", "expected_intent": "memory_profile", "expected_delegate": "companion-agent"},
+  {"message": "remember that I prefer dark themes", "expected_intent": "memory_profile", "expected_delegate": "companion-agent"},
+
+  {"message": "调整一下你的人设，更温柔一点", "expected_intent": "persona", "expected_delegate": "companion-agent"},
+  {"message": "我希望你的桌宠形象是剑士风格", "expected_intent": "persona", "expected_delegate": "companion-agent"},
+  {"message": "change your persona to be more playful", "expected_intent": "persona", "expected_delegate": "companion-agent"},
+
+  {"message": "用语音朗读这段话", "expected_intent": "voice", "expected_delegate": "companion-agent"},
+  {"message": "测试一下 tts 声音", "expected_intent": "voice", "expected_delegate": "companion-agent"},
+  {"message": "read this aloud for me", "expected_intent": "voice", "expected_delegate": "companion-agent"},
+
+  {"message": "今天天气真好啊", "expected_intent": "conversation", "expected_delegate": "companion-agent"},
+  {"message": "我今天有点累，陪我聊聊", "expected_intent": "conversation", "expected_delegate": "companion-agent"},
+  {"message": "hi there, how are you?", "expected_intent": "conversation", "expected_delegate": "companion-agent"}
+]
