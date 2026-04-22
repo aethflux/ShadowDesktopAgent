@@ -1,6 +1,6 @@
 # Hoshino Desktop Digital Twin Agent
 
-Hoshino 是一个桌面数字分身 / 桌宠 Agent 项目，目标是展示 2026 年求职场景下需要的 AI Agent、数字分身、多模态交互和桌面应用工程能力。
+Hoshino 是一个桌面数字分身 / 桌宠 Agent 项目，围绕常驻桌面交互、多模态理解、工具调用和 Agent 编排展开。
 
 ## 核心定位
 

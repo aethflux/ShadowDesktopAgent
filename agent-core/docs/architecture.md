@@ -10,7 +10,7 @@
 6. 目标 sub-agent 执行任务，并按需调用 `ToolRegistry`
 7. 返回回复、调用轨迹、memory 摘要给桌面端
 
-## Why This Is Resume-Worthy
+## Why This Design Matters
 
 - 同时覆盖桌面端、Agent Core、工具系统和模型接入
 - 具备 GUI Agent、Code Agent、Companion Agent 三类能力

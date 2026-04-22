@@ -47,7 +47,7 @@
     "description": "用户自我介绍，系统应更新画像但不调用工具",
     "turns": [
       {
-        "message": "我叫李明，是一名 AI 研究员，正在找工作",
+        "message": "我叫李明，是一名 AI 研究员，最近在做多模态 Agent 项目",
         "attachments": [],
         "expected_delegate": "companion-agent",
         "expected_tool_calls": [],
