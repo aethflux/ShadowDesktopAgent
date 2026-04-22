@@ -1,10 +1,16 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import importlib
 from typing import Any
 
-import pyautogui
-
 from app.tools.base import Tool
+
+
+def _load_pyautogui():
+    try:
+        return importlib.import_module("pyautogui")
+    except Exception as exc:  # pragma: no cover - depends on host GUI environment
+        raise RuntimeError("GUI automation is unavailable in the current environment.") from exc
 
 
 class GuiAutomationTool(Tool):
@@ -18,12 +24,13 @@ class GuiAutomationTool(Tool):
             "y": {"type": "integer"},
             "text": {"type": "string"},
             "keys": {"type": "array", "items": {"type": "string"}},
-            "amount": {"type": "integer"}
+            "amount": {"type": "integer"},
         },
         "required": ["action"],
     }
 
     def run(self, **kwargs: Any) -> str:
+        pyautogui = _load_pyautogui()
         action = kwargs["action"]
         if action == "click":
             pyautogui.click(x=kwargs.get("x"), y=kwargs.get("y"))
