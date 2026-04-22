@@ -302,19 +302,5 @@ triggers:
 | 协作评测 | 100% (15/15) |
 | CI 覆盖 | ruff lint + pytest + intent eval + collab eval |
 | 支持的 LLM Provider | MiniMax / Anthropic / OpenAI / vLLM |
-| 支持的 Embedding Provider | ModelScope / OpenAI / Hash（零依赖）|
+| 支持的 Embedding Provider | ModelScope / OpenAI / Hash（零依赖） |
 | Docker 镜像 | multi-stage, ~800 MB |
-
-## 后续增强方向
-
-- [x] 云端 API 支持（MiniMax / Anthropic / OpenAI / vLLM）
-- [x] Prompt Caching
-- [x] 语义记忆（RAG）
-- [x] Skill 动态加载系统（YAML frontmatter + trigger 注入）
-- [x] MCP 真实调用（stdio JSON-RPC）
-- [x] 单元测试 + CI
-- [x] Docker 部署
-- [x] 浏览器语音输入 / 播报
-- [x] 主动陪伴策略引擎（专注检测 + 情绪感知 + 智能提醒）
-- [x] 多 Agent 协作评测（10 场景，离线 100%）
-- [x] Live2D Cubism 5 r.5 桌宠（Haru 模型，Framework ES Module + import map，WebGL 渲染）
