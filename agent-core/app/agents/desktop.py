@@ -42,6 +42,10 @@ class DesktopAgent(LLMAgent):
         trigger: str,
     ) -> tuple[str, list[ToolCallRecord], str, bool, str | None]:
         tool_calls: list[ToolCallRecord] = []
+        if not self.model_client.supports_vision():
+            reply = "当前配置只支持文本对话，暂时看不了屏幕内容。要启用视觉分析，需要换成支持图像输入的模型。"
+            return reply, tool_calls, "low", trigger == "manual", "vision-unavailable"
+
         screenshot_path = await registry.arun("screen.capture", {})
         tool_calls.append(ToolCallRecord(name="screen.capture", args={}, result=screenshot_path))
         screenshot_url = self._to_data_url(screenshot_path)
@@ -81,6 +85,11 @@ class DesktopAgent(LLMAgent):
             significance = str(result.get("significance") or "medium").strip().lower()
             should_speak = bool(result.get("should_speak", True))
             topic = result.get("topic")
+        except ValueError as exc:
+            reply = f"视觉分析当前不可用：{exc}"
+            significance = "low"
+            should_speak = trigger == "manual"
+            topic = "vision-unavailable"
         except Exception as exc:
             reply = f"我看了一眼屏幕，但视觉分析暂时失败：{exc}"
             significance = "low"

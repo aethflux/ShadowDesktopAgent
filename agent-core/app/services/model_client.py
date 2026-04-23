@@ -47,6 +47,17 @@ def _content_to_text(content: Any) -> str:
     return ""
 
 
+def _messages_include_images(messages: list[dict[str, Any]]) -> bool:
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "image_url":
+                return True
+    return False
+
+
 def _openai_messages_to_anthropic(
     messages: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -215,6 +226,33 @@ class ModelClient:
     def __init__(self) -> None:
         self.provider = settings.provider
 
+    def supports_vision(self) -> bool:
+        model = settings.resolved_model().lower()
+        if self.provider == "anthropic":
+            return True
+        if self.provider == "openai":
+            return any(
+                hint in model
+                for hint in ("gpt-4o", "gpt-4.1", "omni", "vision", "vl")
+            )
+        if self.provider == "vllm":
+            return any(
+                hint in model
+                for hint in ("vl", "vision", "llava", "internvl", "qwen-vl")
+            )
+        if self.provider == "minimax":
+            return any(hint in model for hint in ("vl", "vision"))
+        return False
+
+    def _assert_image_support(self, messages: list[dict[str, Any]]) -> None:
+        if not _messages_include_images(messages):
+            return
+        if self.supports_vision():
+            return
+        raise ValueError(
+            f"Provider '{self.provider}' with model '{settings.resolved_model()}' does not support image inputs."
+        )
+
     # ---- HTTP plumbing --------------------------------------------------- #
 
     async def _post(self, url: str, headers: dict[str, str], payload: dict[str, Any]) -> dict[str, Any]:
@@ -322,6 +360,7 @@ class ModelClient:
         tool_choice: str | dict[str, Any] | None = "auto",
         temperature: float = 0.2,
     ) -> dict[str, Any]:
+        self._assert_image_support(messages)
         if self.provider == "anthropic":
             return await self._anthropic_chat(messages, tools, temperature)
         return await self._openai_chat(messages, tools, tool_choice, temperature)
@@ -344,6 +383,7 @@ class ModelClient:
         temperature: float = 0.2,
         tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
+        self._assert_image_support(messages)
         if self.provider == "anthropic":
             response = await self._anthropic_chat(
                 messages, tools=tools, temperature=temperature, force_json=True

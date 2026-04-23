@@ -11,6 +11,26 @@ let panelWindow: BrowserWindow | null = null;
 let petDragState: DragState | null = null;
 let companionWatching = false;
 
+function attachWindowDiagnostics(name: string, win: BrowserWindow): void {
+  win.webContents.on("did-finish-load", () => {
+    console.log(`[${name}] did-finish-load`);
+  });
+  win.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    console.log(`[${name}][console:${level}] ${message} (${sourceId}:${line})`);
+  });
+  win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    console.error(
+      `[${name}] did-fail-load code=${errorCode} description=${errorDescription} url=${validatedURL} mainFrame=${isMainFrame}`
+    );
+  });
+  win.webContents.on("render-process-gone", (_event, details) => {
+    console.error(`[${name}] render-process-gone ${JSON.stringify(details)}`);
+  });
+  win.webContents.on("preload-error", (_event, path, error) => {
+    console.error(`[${name}] preload-error path=${path} error=${error}`);
+  });
+}
+
 function createPetWindow(): BrowserWindow {
   const display = screen.getPrimaryDisplay().workAreaSize;
   const width = 220;
@@ -33,6 +53,7 @@ function createPetWindow(): BrowserWindow {
   });
 
   win.loadFile(path.join(__dirname, "../renderer/pet.html"));
+  attachWindowDiagnostics("pet", win);
   return win;
 }
 
@@ -42,11 +63,13 @@ function createPanelWindow(): BrowserWindow {
     height: 720,
     title: "Hoshino Agent Console",
     autoHideMenuBar: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js")
     }
   });
   win.loadFile(path.join(__dirname, "../renderer/panel.html"));
+  attachWindowDiagnostics("panel", win);
   return win;
 }
 

@@ -105,6 +105,10 @@ class LLMAgent:
                 reply = self.model_client.extract_text(response).strip()
                 if reply:
                     return reply, tool_calls
+        except ValueError as exc:
+            if tool_calls:
+                return f"我完成了部分操作，但当前配置不支持这次图像输入：{exc}", tool_calls
+            return f"当前配置不支持这次图像输入：{exc}", tool_calls
         except Exception as exc:
             if tool_calls:
                 return f"我完成了部分操作，但模型服务在生成最终回复时出错：{exc}", tool_calls

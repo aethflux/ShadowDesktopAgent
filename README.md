@@ -15,7 +15,7 @@ Hoshino 是一个桌面数字分身 / 桌宠 Agent 项目，围绕常驻桌面�
 - **Anthropic Provider 启用 Prompt Caching，屏幕观察场景 token 成本降低 ~70%**
 - **基于 chromadb + ModelScope / OpenAI / hash embeddings 实现语义记忆检索**
 - **完整 MCP stdio JSON-RPC 实现，接入 filesystem server 真实调用**
-- **48 个 pytest 单元测试，GitHub Actions CI，Intent 路由准确率 100%（31/31）**
+- **52 个 pytest 单元测试，GitHub Actions CI，Intent 路由准确率 100%（31/31）**
 
 ## 架构图
 
@@ -73,7 +73,7 @@ agent-core/
 │   ├── schemas.py       # Pydantic models
 │   └── orchestrator.py  # MultiAgentOrchestrator + bootstrap()
 ├── eval/                # 31-case intent routing eval + run script
-├── tests/               # 48 unit tests (pytest, no network)
+├── tests/               # 52 unit tests (pytest, no network)
 ├── skills/              # local skill definitions (code-helper, english-tutor, etc.)
 ├── memory/              # session memory + chromadb semantic memory
 ├── artifacts/           # screenshots dir (served as /artifacts/)
@@ -85,10 +85,9 @@ agent-core/
 
 desktop/
 ├── src/main.ts          # Electron main process (IPC + BrowserWindow)
-├── renderer/            # 桌宠 (pet.html/css/js) + 控制台 (panel.html)
-└── live2d/             # Live2D Cubism 5 SDK + Haru 模型文件
+└── renderer/            # 桌宠 (pet.html/css/js) + 控制台 (panel.html)
 
-.github/workflows/ci.yml # ruff lint + pytest + intent eval gate
+.github/workflows/ci.yml # ruff lint + pytest + intent/collab eval gate
 ```
 
 ## 快速启动
@@ -242,23 +241,6 @@ GitHub Actions 在每次 PR 运行 ruff → pytest → eval，准确率门槛 `-
 - 支持 `--offline`（CI 默认，无网络调用）和在线两种模式
 - 当前离线准确率：**15/15 = 100%**
 
-### Live2D 桌宠接口
-
-`desktop/src/live2d_adapter.ts` — 完整的 Cubism 4 SDK 适配接口：
-
-```typescript
-interface ILive2DAdapter {
-  load(modelPath: string): Promise<void>
-  playMotion(motion: string): Promise<void>  // Idle / TapBody / Happy / Angry
-  setExpression(name: string): Promise<void>   // Happy / Sad / Angry / Surprise
-  startSpeaking(): void
-  stopSpeaking(): void
-  setEnabled(visible: boolean): void
-}
-```
-
-接入方法：下载 Cubism 4 SDK → 把模型文件放入 `desktop/live2d/hoshino/` → `pet.js` 里 `await live2dAdapter.load('/live2d/hoshino/')`。当前默认 NoOp 适配器，CSS 桌宠作为透明回退。
-
 ### Skill 动态加载系统
 
 `app/services/skill_loader.py` + `skills/` 目录：
@@ -297,7 +279,7 @@ triggers:
 | 指标 | 数值 |
 | --- | --- |
 | Python 代码行数（不含 venv） | ~1700 |
-| pytest 测试用例 | 48 |
+| pytest 测试用例 | 52 |
 | Intent 路由准确率 | 100% (31/31) |
 | 协作评测 | 100% (15/15) |
 | CI 覆盖 | ruff lint + pytest + intent eval + collab eval |

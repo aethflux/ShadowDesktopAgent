@@ -97,6 +97,13 @@ function renderArtifacts(artifacts) {
 async function loadCapabilities() {
   const capabilities = await window.bishoujo.capabilities();
   capabilitiesEl.innerHTML = `
+    <div><strong>Runtime</strong><div><span class="chip">${capabilities.provider}</span><span class="chip">${capabilities.model}</span><span class="chip">embed:${capabilities.embedding_provider}</span></div></div>
+    <div><strong>Features</strong><div>
+      <span class="chip">vision:${capabilities.features.vision ? "on" : "off"}</span>
+      <span class="chip">browser-speech:${capabilities.features.browser_speech ? "on" : "off"}</span>
+      <span class="chip">cloud-tts:${capabilities.features.cloud_tts ? "on" : "off"}</span>
+      <span class="chip">memory:${capabilities.features.semantic_memory ? "on" : "off"}</span>
+    </div></div>
     <div><strong>Tools</strong><div>${capabilities.tools.map((item) => `<span class="chip">${item}</span>`).join("")}</div></div>
     <div><strong>MCP</strong><div>${capabilities.mcp_servers.map((item) => `<span class="chip">${item.name}</span>`).join("")}</div></div>
     <div><strong>Skills</strong><div>${(capabilities.skills.length ? capabilities.skills : [{ name: "本地示例待添加" }]).map((item) => `<span class="chip">${item.name}</span>`).join("")}</div></div>

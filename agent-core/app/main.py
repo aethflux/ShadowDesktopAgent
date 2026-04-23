@@ -71,10 +71,21 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
 @app.get("/api/capabilities")
 async def capabilities() -> dict:
+    desktop_agent = orchestrator.agents["desktop-agent"]
     return {
         "tools": orchestrator.registry.names(),
         "mcp_servers": orchestrator.mcp.list_servers(),
         "skills": [s.model_dump() for s in orchestrator.skills.list_skills()],
+        "provider": settings.provider,
+        "model": settings.resolved_model(),
+        "embedding_provider": settings.embedding_provider,
+        "embedding_model": settings.embedding_model,
+        "features": {
+            "vision": desktop_agent.model_client.supports_vision(),
+            "browser_speech": True,
+            "cloud_tts": settings.enable_minimax_voice,
+            "semantic_memory": settings.enable_semantic_memory,
+        },
     }
 
 
