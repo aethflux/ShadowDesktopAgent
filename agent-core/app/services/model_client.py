@@ -1,10 +1,12 @@
 """Multi-provider LLM client with Prompt Caching support.
 
-Supports three providers, switchable via the `PROVIDER` environment variable:
+Supports five providers, switchable via environment variables:
 
 - ``vllm``      — local vLLM server (OpenAI-compatible)
 - ``openai``    — OpenAI Chat Completions API (automatic prompt caching on stable prefixes)
 - ``anthropic`` — Anthropic Messages API with explicit ``cache_control`` breakpoints
+- ``minimax``   — MiniMax OpenAI-compatible chat completions
+- ``modelscope`` — ModelScope OpenAI-compatible chat completions
 
 The public surface exposes a small unified interface used by the agents:
 
@@ -13,36 +15,79 @@ The public surface exposes a small unified interface used by the agents:
 - ``complete_structured_messages(messages)``        — same, but caller supplies full messages
 - ``extract_message`` / ``extract_text``            — normalize response across providers
 
-Anthropic responses are converted to the OpenAI shape so that agents
-(``LLMAgent.handle``) don't need a separate branch for each provider.
+Provider-specific responses are converted to the OpenAI shape so that agents
+do not need separate branches for each vendor.
 """
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from typing import Any
 
 import httpx
 
-from app.config import settings
+from app.config import Provider, settings
 
 
 # --------------------------------------------------------------------------- #
 #  Message normalization helpers
 # --------------------------------------------------------------------------- #
 
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>\s*", re.IGNORECASE | re.DOTALL)
+
+
+def _strip_reasoning_blocks(text: str) -> str:
+    return _THINK_BLOCK_RE.sub("", text).strip()
+
+
+def _append_json_instruction(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    cloned = json.loads(json.dumps(messages))
+    instruction = "Respond with a single JSON object. No prose."
+    for message in reversed(cloned):
+        if message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            message["content"] = f"{content}\n\n{instruction}"
+        elif isinstance(content, list):
+            content.append({"type": "text", "text": instruction})
+        break
+    return cloned
+
+
+def _parse_json_object(text: str) -> dict[str, Any]:
+    cleaned = _strip_reasoning_blocks(text)
+    try:
+        value = json.loads(cleaned)
+    except json.JSONDecodeError:
+        decoder = json.JSONDecoder()
+        for idx, char in enumerate(cleaned):
+            if char != "{":
+                continue
+            try:
+                value, _ = decoder.raw_decode(cleaned[idx:])
+                break
+            except json.JSONDecodeError:
+                continue
+        else:
+            raise
+    if not isinstance(value, dict):
+        raise ValueError("Structured completion did not return a JSON object.")
+    return value
+
 def _content_to_text(content: Any) -> str:
     """Flatten an OpenAI-style content field into plain text."""
     if isinstance(content, str):
-        return content
+        return _strip_reasoning_blocks(content)
     if isinstance(content, list):
         parts: list[str] = []
         for part in content:
             if isinstance(part, dict):
                 if part.get("type") == "text":
-                    parts.append(part.get("text", ""))
+                    parts.append(_strip_reasoning_blocks(part.get("text", "")))
                 elif "text" in part:
-                    parts.append(str(part["text"]))
+                    parts.append(_strip_reasoning_blocks(str(part["text"])))
         return "".join(parts)
     return ""
 
@@ -223,11 +268,15 @@ class ModelClient:
     upstream agents remain provider-agnostic.
     """
 
-    def __init__(self) -> None:
-        self.provider = settings.provider
+    def __init__(self, provider: Provider | None = None, model: str | None = None) -> None:
+        self.provider = provider or settings.provider
+        self.model = model
+
+    def resolved_model(self) -> str:
+        return self.model or settings.resolved_model(self.provider)
 
     def supports_vision(self) -> bool:
-        model = settings.resolved_model().lower()
+        model = self.resolved_model().lower()
         if self.provider == "anthropic":
             return True
         if self.provider == "openai":
@@ -242,6 +291,11 @@ class ModelClient:
             )
         if self.provider == "minimax":
             return any(hint in model for hint in ("vl", "vision"))
+        if self.provider == "modelscope":
+            return any(
+                hint in model
+                for hint in ("vl", "vision", "omni", "qwen3-vl", "qwen2.5-vl")
+            )
         return False
 
     def _assert_image_support(self, messages: list[dict[str, Any]]) -> None:
@@ -250,7 +304,7 @@ class ModelClient:
         if self.supports_vision():
             return
         raise ValueError(
-            f"Provider '{self.provider}' with model '{settings.resolved_model()}' does not support image inputs."
+            f"Provider '{self.provider}' with model '{self.resolved_model()}' does not support image inputs."
         )
 
     # ---- HTTP plumbing --------------------------------------------------- #
@@ -258,18 +312,22 @@ class ModelClient:
     async def _post(self, url: str, headers: dict[str, str], payload: dict[str, Any]) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+            if response.is_error:
+                detail = response.text.strip()
+                if len(detail) > 600:
+                    detail = detail[:600] + "..."
+                raise RuntimeError(f"{response.status_code} from {url}: {detail}")
             return response.json()
 
     def _openai_headers(self) -> dict[str, str]:
-        token = settings.resolved_api_key()
+        token = settings.resolved_api_key(self.provider)
         return {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
 
     def _openai_base(self) -> str:
-        return settings.resolved_api_base()
+        return settings.resolved_api_base(self.provider)
 
     def _anthropic_headers(self) -> dict[str, str]:
         return {
@@ -289,7 +347,7 @@ class ModelClient:
         response_format: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "model": settings.resolved_model(),
+            "model": self.resolved_model(),
             "messages": messages,
             "temperature": temperature,
         }
@@ -333,7 +391,7 @@ class ModelClient:
                     )
 
         payload: dict[str, Any] = {
-            "model": settings.resolved_model(),
+            "model": self.resolved_model(),
             "max_tokens": 2048,
             "temperature": temperature,
             "messages": anthropic_messages,
@@ -345,7 +403,7 @@ class ModelClient:
             payload["tools"] = anthropic_tools
 
         raw = await self._post(
-            f"{settings.resolved_api_base('anthropic')}/v1/messages",
+            f"{settings.resolved_api_base(self.provider)}/v1/messages",
             self._anthropic_headers(),
             payload,
         )
@@ -388,6 +446,14 @@ class ModelClient:
             response = await self._anthropic_chat(
                 messages, tools=tools, temperature=temperature, force_json=True
             )
+        elif self.provider in {"minimax", "modelscope"}:
+            response = await self._openai_chat(
+                _append_json_instruction(messages),
+                tools=tools,
+                tool_choice="auto" if tools else None,
+                temperature=temperature,
+                response_format=None,
+            )
         else:
             response = await self._openai_chat(
                 messages,
@@ -397,7 +463,7 @@ class ModelClient:
                 response_format={"type": "json_object"},
             )
         text = self.extract_text(response)
-        return json.loads(text)
+        return _parse_json_object(text)
 
     # ---- Response unwrap (stable across providers) ---------------------- #
 

@@ -214,18 +214,20 @@ class MultiAgentOrchestrator:
             reply = f"{nudge}\n\n{reply}"
             should_speak = True
         observation_state.observation_count += 1
-        observation_state.last_comment = reply
+        if reply:
+            observation_state.last_comment = reply
         observation_state.last_topic = topic
         self.memory.save_observation_state(observation_state)
 
-        self.memory.append(
-            MemoryItem(
-                session_id=request.session_id,
-                role="assistant",
-                content=f"[observation/{request.trigger}] {reply}",
-                tags=["observation", significance],
+        if reply:
+            self.memory.append(
+                MemoryItem(
+                    session_id=request.session_id,
+                    role="assistant",
+                    content=f"[observation/{request.trigger}] {reply}",
+                    tags=["observation", significance],
+                )
             )
-        )
 
         trace = AgentTrace(
             active_agent="desktop-agent",

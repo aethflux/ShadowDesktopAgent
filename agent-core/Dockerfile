@@ -3,7 +3,7 @@
 # =============================================================================
 # Multi-stage build: a lean runtime image with no build tools, plus a dev image.
 #
-# Build & run (local vLLM still required for vision; swap in cloud keys for API):
+# Build & run (cloud keys are enough for MiniMax chat + ModelScope vision):
 #
 #   # Local development with cloud API
 #   cp .env.example .env   # fill in MINIMAX_API_KEY / MODELSCOPE_API_KEY as needed
@@ -67,9 +67,16 @@ USER hoshino
 WORKDIR /app/hoshino
 ENV PATH="/root/.local/bin:$PATH"
 
-# Default: MiniMax cloud API for chat, local hash embeddings as a safe fallback.
+# Default: MiniMax cloud API for chat, ModelScope for vision, local hash embeddings as a safe fallback.
 ENV PROVIDER=minimax
-ENV MINIMAX_MODEL=MiniMax-Text-01
+ENV MINIMAX_MODEL=MiniMax-M2.7
+ENV VISION_PROVIDER=modelscope
+ENV VISION_MODEL=Qwen/Qwen3-VL-8B-Instruct
+ENV ENABLE_EDGE_TTS=true
+ENV EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
+ENV ENABLE_MODELSCOPE_TTS=false
+ENV MODELSCOPE_TTS_API_BASE=https://iic-cosyvoice2-0-5b.ms.show
+ENV MODELSCOPE_TTS_MODEL=iic/CosyVoice2-0.5B
 ENV EMBEDDING_PROVIDER=hash
 ENV EMBEDDING_MODEL=text-embedding-3-small
 ENV EMBEDDING_DIM=256

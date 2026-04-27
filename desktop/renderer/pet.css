@@ -1,14 +1,15 @@
 :root {
   --skin: #ffe3d2;
-  --line: #5c4038;
-  --hair: #c98245;
-  --hair-deep: #8f4f2b;
-  --cream: #fff8ed;
-  --white: #fffdf8;
-  --red: #d84d45;
+  --line: #3f3a38;
+  --hair: #dce8ee;
+  --hair-deep: #7099a7;
+  --cream: #f7fbff;
+  --white: #ffffff;
+  --red: #e24f6a;
   --gold: #f4c56a;
-  --steel: #c8d7e5;
-  --shadow: rgba(72, 45, 32, 0.22);
+  --steel: #9ed7d3;
+  --teal: #1da7a6;
+  --shadow: rgba(37, 52, 58, 0.22);
 }
 
 * { box-sizing: border-box; }
@@ -22,8 +23,8 @@ body {
 
 .pet-shell {
   position: relative;
-  width: 220px;
-  height: 320px;
+  width: 240px;
+  height: 430px;
   cursor: grab;
   user-select: none;
 }
@@ -32,22 +33,22 @@ body {
 
 .aura {
   position: absolute;
-  left: 44px;
-  top: 28px;
-  width: 136px;
-  height: 236px;
+  left: 48px;
+  top: 34px;
+  width: 150px;
+  height: 250px;
   border-radius: 44% 44% 38% 38%;
   background:
     radial-gradient(circle at 45% 18%, rgba(255, 255, 255, 0.9), transparent 22%),
-    linear-gradient(180deg, rgba(255, 240, 210, 0.55), rgba(216, 77, 69, 0.18));
+    linear-gradient(180deg, rgba(178, 236, 232, 0.42), rgba(226, 79, 106, 0.16));
   filter: blur(1px);
   animation: auraPulse 3.8s ease-in-out infinite;
 }
 
 .avatar {
   position: absolute;
-  left: 44px;
-  top: 18px;
+  left: 52px;
+  top: 28px;
   width: 138px;
   height: 280px;
   pointer-events: none;
@@ -127,7 +128,7 @@ body {
   top: 6px;
   width: 68px;
   height: 42px;
-  background: linear-gradient(145deg, #d89552, var(--hair-deep));
+  background: linear-gradient(145deg, var(--hair), var(--hair-deep));
   clip-path: polygon(0 0, 100% 0, 93% 80%, 68% 55%, 50% 100%, 31% 58%, 12% 84%);
   border-radius: 34px 34px 10px 10px;
   z-index: 6;
@@ -158,6 +159,57 @@ body {
   border-radius: 999px;
   background: var(--gold);
   z-index: 7;
+}
+
+.headset {
+  position: absolute;
+  left: 5px;
+  top: 29px;
+  width: 68px;
+  height: 42px;
+  border: 4px solid var(--teal);
+  border-bottom: 0;
+  border-radius: 34px 34px 0 0;
+  z-index: 8;
+}
+
+.headset::before,
+.headset::after {
+  content: "";
+  position: absolute;
+  top: 22px;
+  width: 10px;
+  height: 22px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+}
+
+.headset::before { left: -8px; }
+.headset::after { right: -8px; }
+
+.mic {
+  position: absolute;
+  right: -3px;
+  top: 61px;
+  width: 24px;
+  height: 16px;
+  border-right: 3px solid var(--line);
+  border-bottom: 3px solid var(--line);
+  border-radius: 0 0 12px 0;
+  z-index: 8;
+}
+
+.mic::after {
+  content: "";
+  position: absolute;
+  right: -7px;
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  border: 2px solid var(--line);
 }
 
 .body {
@@ -280,12 +332,12 @@ body {
 
 .pet-bubble {
   position: absolute;
-  right: 8px;
+  left: 48px;
   top: 8px;
-  max-width: 180px;
+  max-width: 210px;
   padding: 9px 11px;
   border: 1px solid rgba(92, 64, 56, 0.14);
-  border-radius: 16px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.95);
   color: var(--line);
   font-size: 12px;
@@ -296,6 +348,135 @@ body {
   pointer-events: none;
   transition: opacity 160ms ease, transform 160ms ease;
   z-index: 30;
+}
+
+.mini-chat {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  width: 220px;
+  padding: 7px;
+  border: 1px solid rgba(92, 64, 56, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.92);
+  box-shadow: 0 10px 22px var(--shadow);
+  color: var(--line);
+  cursor: default;
+  user-select: text;
+  z-index: 40;
+}
+
+.mini-chat-row {
+  display: grid;
+  grid-template-columns: 1fr 48px;
+  gap: 6px;
+}
+
+.mini-chat input,
+.mini-chat button,
+.mini-chat select {
+  height: 30px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.mini-chat input,
+.mini-chat select {
+  min-width: 0;
+  border: 1px solid rgba(92, 64, 56, 0.22);
+  padding: 0 8px;
+  color: var(--line);
+  background: var(--white);
+}
+
+.mini-chat select {
+  width: 100%;
+  height: 28px;
+  padding: 0 6px;
+}
+
+.mini-chat button {
+  border: 1px solid rgba(92, 64, 56, 0.18);
+  color: #fffdf8;
+  background: var(--red);
+}
+
+.mini-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.mini-controls label {
+  display: grid;
+  gap: 3px;
+}
+
+.mini-controls span {
+  color: rgba(63, 58, 56, 0.72);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.avatar-streamer .rapier {
+  right: -3px;
+  top: 34px;
+  width: 8px;
+  height: 92px;
+  background: linear-gradient(180deg, var(--teal), #f7fbff);
+  opacity: 0.78;
+}
+
+.avatar-streamer .rapier::before {
+  background: var(--red);
+}
+
+.avatar-swordswoman {
+  --line: #5c4038;
+  --hair: #c98245;
+  --hair-deep: #8f4f2b;
+  --cream: #fff8ed;
+  --white: #fffdf8;
+  --red: #d84d45;
+  --steel: #c8d7e5;
+  --shadow: rgba(72, 45, 32, 0.22);
+}
+
+.avatar-swordswoman .aura {
+  background:
+    radial-gradient(circle at 45% 18%, rgba(255, 255, 255, 0.9), transparent 22%),
+    linear-gradient(180deg, rgba(255, 240, 210, 0.55), rgba(216, 77, 69, 0.18));
+}
+
+.avatar-swordswoman .headset,
+.avatar-swordswoman .mic {
+  display: none;
+}
+
+.avatar-cyber {
+  --line: #263c3e;
+  --hair: #c8f1ee;
+  --hair-deep: #3f858b;
+  --cream: #f7fffd;
+  --white: #ffffff;
+  --red: #ef5c87;
+  --gold: #8bdd80;
+  --steel: #52c1b7;
+  --teal: #2dbf9d;
+  --shadow: rgba(33, 72, 70, 0.23);
+}
+
+.avatar-cyber .hair-clip {
+  width: 20px;
+  height: 10px;
+  background: #8bdd80;
+}
+
+.mini-chat button:disabled,
+.mini-chat input:disabled {
+  opacity: 0.62;
 }
 
 .pet-bubble.show {

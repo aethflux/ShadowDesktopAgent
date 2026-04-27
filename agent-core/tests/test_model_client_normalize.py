@@ -7,9 +7,11 @@ bug-prone part of the multi-provider refactor.
 from __future__ import annotations
 
 from app.services.model_client import (
+    _append_json_instruction,
     _anthropic_response_to_openai,
     _openai_messages_to_anthropic,
     _openai_tools_to_anthropic,
+    _parse_json_object,
 )
 
 
@@ -117,3 +119,19 @@ def test_anthropic_response_is_reshaped_for_openai_consumers() -> None:
     assert message["content"] == "Sure, capturing now."
     assert message["tool_calls"][0]["function"]["name"] == "screen.capture"
     assert shaped["usage"]["cache_read_input_tokens"] == 80
+
+
+def test_append_json_instruction_targets_last_user_turn() -> None:
+    messages = [
+        {"role": "system", "content": "You are Hoshino."},
+        {"role": "assistant", "content": "Previous reply."},
+        {"role": "user", "content": "Classify this."},
+    ]
+    updated = _append_json_instruction(messages)
+    assert updated[-1]["content"].endswith("Respond with a single JSON object. No prose.")
+
+
+def test_parse_json_object_ignores_think_block() -> None:
+    text = '<think>internal reasoning</think>\n{"intent":"conversation","confidence":0.5}'
+    parsed = _parse_json_object(text)
+    assert parsed["intent"] == "conversation"

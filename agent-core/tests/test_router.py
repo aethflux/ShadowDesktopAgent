@@ -41,3 +41,9 @@ def test_empty_message_falls_back_to_conversation(router: RouterAgent) -> None:
     result = router.classify_local("")
     assert result.intent == "conversation"
     assert result.delegated_to == "companion-agent"
+
+
+def test_current_working_directory_prefers_terminal(router: RouterAgent) -> None:
+    result = router.classify_local("请在终端里执行一个只读命令，告诉我当前工作目录。")
+    assert result.intent == "terminal"
+    assert result.delegated_to == "terminal-agent"

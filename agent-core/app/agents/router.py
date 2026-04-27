@@ -24,7 +24,7 @@ class RouterAgent:
                 keywords=(
                     "屏幕", "截图", "截个图", "截个屏", "截屏", "屏幕观察",
                     "观察", "看屏幕", "看看屏幕", "当前界面",
-                    "当前窗口", "我的窗口", "我当前", "画面",
+                    "当前窗口", "我的窗口", "我当前的窗口", "画面",
                     "你看到了什么", "帮我看看", "screen", "screenshot", "what do you see",
                     "look at my screen", "window", "user interface",
                 ),

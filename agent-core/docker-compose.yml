@@ -26,7 +26,14 @@ services:
       - .env          # MINIMAX_API_KEY, MODELSCOPE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, ...
     environment:
       - PROVIDER=minimax
-      - MINIMAX_MODEL=MiniMax-Text-01
+      - MINIMAX_MODEL=MiniMax-M2.7
+      - VISION_PROVIDER=modelscope
+      - VISION_MODEL=Qwen/Qwen3-VL-8B-Instruct
+      - ENABLE_EDGE_TTS=true
+      - EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
+      - ENABLE_MODELSCOPE_TTS=false
+      - MODELSCOPE_TTS_API_BASE=https://iic-cosyvoice2-0-5b.ms.show
+      - MODELSCOPE_TTS_MODEL=iic/CosyVoice2-0.5B
       - EMBEDDING_PROVIDER=modelscope
       - EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
       - ENABLE_PROMPT_CACHE=true

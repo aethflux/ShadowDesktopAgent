@@ -7,22 +7,23 @@ Hoshino 是一个桌面数字分身 / 桌宠 Agent 项目，围绕常驻桌面�
 这个项目不是单纯聊天机器人，而是一个常驻桌面的数字分身：
 
 - 能以桌宠形态停留在桌面上
-- 能通过文本、图片和浏览器语音与用户交流
+- 能通过文本、图片和语音与用户交流
 - 能持续观察屏幕，在合适的时候主动评论或提醒
 - 能维护用户画像、偏好、目标和近期记忆
 - 能调用工具，包括截图、终端、MCP/skills 扩展入口
-- **支持 MiniMax / vLLM / OpenAI / Anthropic 四种 Provider 热切换，无需改代码**
+- **支持 MiniMax / ModelScope / vLLM / OpenAI / Anthropic 五种 Provider 热切换，无需改代码**
+- **主聊天模型和视觉模型可拆分配置：文本走 MiniMax，截图/图片理解走 ModelScope VL**
 - **Anthropic Provider 启用 Prompt Caching，屏幕观察场景 token 成本降低 ~70%**
 - **基于 chromadb + ModelScope / OpenAI / hash embeddings 实现语义记忆检索**
 - **完整 MCP stdio JSON-RPC 实现，接入 filesystem server 真实调用**
-- **52 个 pytest 单元测试，GitHub Actions CI，Intent 路由准确率 100%（31/31）**
+- **66 个 pytest 单元测试，GitHub Actions CI，Intent 路由准确率 100%（31/31）**
 
 ## 架构图
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │                       Desktop (Electron UI)                          │
-│   桌宠窗口 (220×320) ◄──► 控制台 (460×720) ◄──► 后端 HTTP API       │
+│   桌宠窗口 (240×430) ◄──► 控制台 (1080×760) ◄──► 后端 HTTP API     │
 └────────────────────────────┬─────────────────────────────────────────┘
                              │  POST /api/chat
                              ▼
@@ -51,10 +52,10 @@ Hoshino 是一个桌面数字分身 / 桌宠 Agent 项目，围绕常驻桌面�
                              │
          ┌───────────────────┼───────────────────┼───────────────────┐
          ▼                   ▼                   ▼                   ▼
-   vLLM (local)        OpenAI (cloud)     Anthropic (cloud)    MiniMax (cloud)
-   Qwen2.5-VL          GPT-4o-mini        Claude Sonnet 4      MiniMax-Text-01
-   Port 8000           api.openai.com     api.anthropic.com   api.minimax.chat/v1
-   Prompt Caching: ✗   Prompt Caching: auto  Prompt Caching: ✓  Prompt Caching: ✗
+   vLLM (local)        OpenAI (cloud)     Anthropic (cloud)    MiniMax (cloud)      ModelScope (cloud)
+   Qwen2.5-VL          GPT-4o-mini        Claude Sonnet 4      MiniMax-M2.7         Qwen3-VL-8B
+   Port 8000           api.openai.com     api.anthropic.com   api.minimax.chat/v1  api-inference.modelscope.cn
+   Prompt Caching: ✗   Prompt Caching: auto  Prompt Caching: ✓  Prompt Caching: ✗   Prompt Caching: ✗
 ```
 
 ## 项目结构
@@ -73,7 +74,7 @@ agent-core/
 │   ├── schemas.py       # Pydantic models
 │   └── orchestrator.py  # MultiAgentOrchestrator + bootstrap()
 ├── eval/                # 31-case intent routing eval + run script
-├── tests/               # 52 unit tests (pytest, no network)
+├── tests/               # 66 unit tests (pytest, no network)
 ├── skills/              # local skill definitions (code-helper, english-tutor, etc.)
 ├── memory/              # session memory + chromadb semantic memory
 ├── artifacts/           # screenshots dir (served as /artifacts/)
@@ -143,7 +144,8 @@ uvicorn app.main:app --reload --port 8787
 | Anthropic（推荐） | `anthropic` | Prompt Caching + cache_control，token 成本 ~70%↓ |
 | OpenAI | `openai` | 自动缓存稳定前缀，性价比高 |
 | 本地 vLLM | `vllm` | 需要 GPU，支持多模态（Qwen2.5-VL） |
-| MiniMax（推荐中国用户） | `minimax` | 高性价比，OpenAI-compatible，MiniMax-Text-01 / MiniMax-vl |
+| MiniMax（推荐中国用户） | `minimax` | Token Plan 默认可用，适合编程与 Agent 场景，推荐 `MiniMax-M2.7` |
+| ModelScope | `modelscope` | OpenAI-compatible API，可作为视觉或文本 Provider |
 
 ```env
 # 云端 Anthropic（Prompt Caching 降低 token 成本）
@@ -155,12 +157,30 @@ ENABLE_PROMPT_CACHE=true
 # MiniMax（推荐中国用户，无需科学上网）
 PROVIDER=minimax
 MINIMAX_API_KEY=EMG-xxxxxxxxxxxxxxxx
-MINIMAX_MODEL=MiniMax-Text-01
+MINIMAX_MODEL=MiniMax-M2.7
 MINIMAX_API_BASE=https://api.minimax.chat/v1
+
+# 视觉模型：主聊天可继续用 MiniMax，截图/图片理解独立走 ModelScope
+VISION_PROVIDER=modelscope
+VISION_MODEL=Qwen/Qwen3-VL-8B-Instruct
+MODELSCOPE_MODEL=Qwen/Qwen3-VL-8B-Instruct
 EMBEDDING_PROVIDER=modelscope
 EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
 MODELSCOPE_API_KEY=ms-xxxxxxxxxxxxxxxx
 MODELSCOPE_API_BASE=https://api-inference.modelscope.cn/v1
+
+# 语音播报：默认 Edge Neural TTS，失败时回退到浏览器语音
+ENABLE_EDGE_TTS=true
+EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
+EDGE_TTS_RATE=+0%
+EDGE_TTS_PITCH=+0Hz
+
+# ModelScope CosyVoice2 Studio 可选；确认能返回非静音音频后再启用
+ENABLE_MODELSCOPE_TTS=false
+MODELSCOPE_TTS_API_BASE=https://iic-cosyvoice2-0-5b.ms.show
+MODELSCOPE_TTS_MODEL=iic/CosyVoice2-0.5B
+MODELSCOPE_TTS_MODE=自然语言控制
+MODELSCOPE_TTS_INSTRUCTION=用温柔自然的中文女声朗读
 
 # 云端 OpenAI
 PROVIDER=openai
@@ -172,14 +192,29 @@ PROVIDER=vllm
 VLLM_API_BASE=http://127.0.0.1:8000/v1
 VLLM_API_KEY=EMPTY
 VLLM_MODEL=Qwen/Qwen2.5-VL-7B-Instruct
+
+# 直接使用 ModelScope 文本/视觉模型
+PROVIDER=modelscope
+MODELSCOPE_API_KEY=ms-xxxxxxxxxxxxxxxx
+MODELSCOPE_MODEL=Qwen/Qwen3-VL-8B-Instruct
 ```
 
 ## 技术亮点详解
 
 ### 多 Provider 模型客户端
-`app/services/model_client.py` 统一封装了 MiniMax / vLLM / OpenAI / Anthropic 四种调用路径：
+`app/services/model_client.py` 统一封装了 MiniMax / ModelScope / vLLM / OpenAI / Anthropic 五种调用路径：
 - Anthropic 分支：消息格式翻译（OpenAI style → Anthropic style）、`cache_control` 注入、`stop_reason` → `finish_reason` 回填
+- OpenAI-compatible 分支：复用 MiniMax、ModelScope、OpenAI、vLLM 的 `/chat/completions` 形态
+- 视觉分支：`VISION_PROVIDER` / `VISION_MODEL` 可独立于主聊天模型配置
 - 所有分支返回统一的 OpenAI shape，agent 代码无需感知 provider 差异
+
+### 屏幕与图片视觉
+`DesktopAgent` 在处理截图和用户上传图片时使用独立视觉客户端：
+
+- 默认 `VISION_PROVIDER=modelscope`
+- 默认 `VISION_MODEL=Qwen/Qwen3-VL-8B-Instruct`
+- 主聊天仍可使用 `PROVIDER=minimax` + `MINIMAX_MODEL=MiniMax-M2.7`
+- 如果文本和视觉必须统一，也可以设置 `PROVIDER=modelscope` 并复用同一个 `MODELSCOPE_MODEL`
 
 ### Prompt Caching（Anthropic）
 在 `enable_prompt_cache=true` 时，system prompt 末尾附加 `cache_control: {type: "ephemeral"}`，Anthropic 将之前所有 token 写入缓存盘，后续请求只需传输增量。屏幕持续观察等高频相同上下文的场景受益最大。
@@ -207,12 +242,16 @@ Intent router eval — 31 cases
 ```
 GitHub Actions 在每次 PR 运行 ruff → pytest → eval，准确率门槛 `--min-accuracy 0.80`。
 
-### 浏览器语音
+### 语音
 
-桌面端默认使用浏览器 Web Speech API：
+桌面端默认调用后端 Edge Neural TTS，并保留浏览器 Web Speech API 作为兜底：
 
 - **语音输入**：前端直接调用浏览器 `SpeechRecognition`
-- **语音播报**：后端 `/api/voice/tts` 默认返回 `browser-speech` 参数，桌面端可继续走浏览器播报
+- **语音播报**：后端 `/api/voice/tts` 默认使用 `edge` 生成音频文件，桌面端直接播放
+- **音色切换**：桌宠窗口内可切换清亮女声、甜美女声、青年男声、旁白男声，对应 Edge Neural TTS 中文音色
+- **形象切换**：桌宠窗口内可切换虚拟主播、见习剑士、电子搭档三套 CSS 形象
+- **ModelScope TTS**：启用 `ENABLE_MODELSCOPE_TTS=true` 后调用 `iic/CosyVoice2-0.5B` Studio；如果返回静音或请求失败，会回退到浏览器语音
+- **备选接入**：MiniMax / Gemini TTS 代码仍保留为可选分支，默认关闭
 - **兼容策略**：如果当前环境不支持 Web Speech API，界面会提示改用文本输入
 
 ### 主动陪伴策略引擎
@@ -279,10 +318,10 @@ triggers:
 | 指标 | 数值 |
 | --- | --- |
 | Python 代码行数（不含 venv） | ~1700 |
-| pytest 测试用例 | 52 |
+| pytest 测试用例 | 66 |
 | Intent 路由准确率 | 100% (31/31) |
 | 协作评测 | 100% (15/15) |
 | CI 覆盖 | ruff lint + pytest + intent eval + collab eval |
-| 支持的 LLM Provider | MiniMax / Anthropic / OpenAI / vLLM |
+| 支持的 LLM Provider | MiniMax / ModelScope / Anthropic / OpenAI / vLLM |
 | 支持的 Embedding Provider | ModelScope / OpenAI / Hash（零依赖） |
 | Docker 镜像 | multi-stage, ~800 MB |

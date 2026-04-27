@@ -11,6 +11,8 @@ let panelWindow: BrowserWindow | null = null;
 let petDragState: DragState | null = null;
 let companionWatching = false;
 
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
 function attachWindowDiagnostics(name: string, win: BrowserWindow): void {
   win.webContents.on("did-finish-load", () => {
     console.log(`[${name}] did-finish-load`);
@@ -33,8 +35,8 @@ function attachWindowDiagnostics(name: string, win: BrowserWindow): void {
 
 function createPetWindow(): BrowserWindow {
   const display = screen.getPrimaryDisplay().workAreaSize;
-  const width = 220;
-  const height = 320;
+  const width = 240;
+  const height = 430;
   const win = new BrowserWindow({
     width,
     height,
@@ -59,8 +61,10 @@ function createPetWindow(): BrowserWindow {
 
 function createPanelWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 460,
-    height: 720,
+    width: 1080,
+    height: 760,
+    minWidth: 920,
+    minHeight: 640,
     title: "Hoshino Agent Console",
     autoHideMenuBar: true,
     show: false,
@@ -144,13 +148,33 @@ async function postJson(pathname: string, payload: unknown): Promise<unknown> {
   return response.json();
 }
 
+function absolutizeBackendUrl<T>(payload: T): T {
+  if (!payload || typeof payload !== "object" || !("audio_url" in payload)) {
+    return payload;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const audioUrl = record.audio_url;
+  if (typeof audioUrl !== "string" || !audioUrl.startsWith("/")) {
+    return payload;
+  }
+
+  return {
+    ...record,
+    audio_url: `${BACKEND_URL}${audioUrl}`
+  } as T;
+}
+
 app.whenReady().then(() => {
   petWindow = createPetWindow();
   panelWindow = createPanelWindow();
 
   ipcMain.handle("agent:chat", async (_event, payload) => postJson("/api/chat", payload));
   ipcMain.handle("agent:observe", async (_event, payload) => postJson("/api/companion/observe", payload));
-  ipcMain.handle("agent:tts", async (_event, payload) => postJson("/api/voice/tts", payload));
+  ipcMain.handle("agent:tts", async (_event, payload) => {
+    const response = await postJson("/api/voice/tts", payload);
+    return absolutizeBackendUrl(response);
+  });
 
   ipcMain.handle("agent:capabilities", async () => {
     const response = await fetch(`${BACKEND_URL}/api/capabilities`);

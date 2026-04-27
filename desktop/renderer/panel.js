@@ -42,7 +42,7 @@ function renderTask(task) {
   taskStatus.textContent = task.status || "completed";
   taskContent.innerHTML = `
     <p class="task-title">${task.title || "Untitled task"}</p>
-    <p class="meta-text">由 ${task.owner || "unknown-agent"} 负责，共 ${task.step_count || 0} 个步骤。</p>
+    <p class="meta-text">${task.owner || "unknown-agent"} · ${task.step_count || 0} steps</p>
     <div class="task-meta">
       <span class="chip">${task.owner || "agent"}</span>
       <span class="chip">${task.status || "completed"}</span>
@@ -97,16 +97,14 @@ function renderArtifacts(artifacts) {
 async function loadCapabilities() {
   const capabilities = await window.bishoujo.capabilities();
   capabilitiesEl.innerHTML = `
-    <div><strong>Runtime</strong><div><span class="chip">${capabilities.provider}</span><span class="chip">${capabilities.model}</span><span class="chip">embed:${capabilities.embedding_provider}</span></div></div>
-    <div><strong>Features</strong><div>
+    <div class="status-group"><span class="status-label">Runtime</span><span class="chip">${capabilities.provider}</span><span class="chip">${capabilities.model}</span><span class="chip">vision:${capabilities.vision_provider}</span><span class="chip">embed:${capabilities.embedding_provider}</span></div>
+    <div class="status-group"><span class="status-label">Features</span>
       <span class="chip">vision:${capabilities.features.vision ? "on" : "off"}</span>
       <span class="chip">browser-speech:${capabilities.features.browser_speech ? "on" : "off"}</span>
-      <span class="chip">cloud-tts:${capabilities.features.cloud_tts ? "on" : "off"}</span>
+      <span class="chip">tts:${capabilities.features.tts_engine || "browser-speech"}</span>
       <span class="chip">memory:${capabilities.features.semantic_memory ? "on" : "off"}</span>
-    </div></div>
-    <div><strong>Tools</strong><div>${capabilities.tools.map((item) => `<span class="chip">${item}</span>`).join("")}</div></div>
-    <div><strong>MCP</strong><div>${capabilities.mcp_servers.map((item) => `<span class="chip">${item.name}</span>`).join("")}</div></div>
-    <div><strong>Skills</strong><div>${(capabilities.skills.length ? capabilities.skills : [{ name: "本地示例待添加" }]).map((item) => `<span class="chip">${item.name}</span>`).join("")}</div></div>
+    </div>
+    <div class="status-group"><span class="status-label">Tools</span>${capabilities.tools.slice(0, 8).map((item) => `<span class="chip">${item}</span>`).join("")}</div>
   `;
 }
 
@@ -117,35 +115,43 @@ composer.addEventListener("submit", async (event) => {
 
   appendMessage("user", text);
   taskStatus.textContent = "running";
+  voiceBtn.disabled = true;
 
-  const attachments = [];
-  const file = imageInput.files?.[0];
-  if (file) {
-    attachments.push({
-      kind: "image",
-      mime_type: file.type,
-      data_url: await fileToDataUrl(file)
+  try {
+    const attachments = [];
+    const file = imageInput.files?.[0];
+    if (file) {
+      attachments.push({
+        kind: "image",
+        mime_type: file.type,
+        data_url: await fileToDataUrl(file)
+      });
+    }
+
+    const response = await window.bishoujo.chat({
+      message: text,
+      session_id: "desktop-session",
+      attachments
     });
+
+    appendMessage(
+      "assistant",
+      response.reply,
+      `${response.trace.active_agent} | tools: ${summarizeTools(response.trace.tool_calls)}`
+    );
+
+    renderTask(response.task || {});
+    renderTimeline(response.trace.tool_calls || []);
+    renderArtifacts(response.artifacts || []);
+
+    messageInput.value = "";
+    imageInput.value = "";
+  } catch (error) {
+    taskStatus.textContent = "failed";
+    appendMessage("assistant", `请求失败：${error.message}`);
+  } finally {
+    voiceBtn.disabled = false;
   }
-
-  const response = await window.bishoujo.chat({
-    message: text,
-    session_id: "desktop-session",
-    attachments
-  });
-
-  appendMessage(
-    "assistant",
-    response.reply,
-    `${response.trace.active_agent} | tools: ${summarizeTools(response.trace.tool_calls)}`
-  );
-
-  renderTask(response.task || {});
-  renderTimeline(response.trace.tool_calls || []);
-  renderArtifacts(response.artifacts || []);
-
-  messageInput.value = "";
-  imageInput.value = "";
 });
 
 voiceBtn.addEventListener("click", () => {
@@ -161,7 +167,11 @@ voiceBtn.addEventListener("click", () => {
     messageInput.value = transcript;
     appendMessage("assistant", `已转写语音：${transcript}`);
   };
-  recognition.start();
+  try {
+    recognition.start();
+  } catch (error) {
+    appendMessage("assistant", `语音输入启动失败：${error.message}`);
+  }
 });
 
 loadCapabilities().catch((error) => {

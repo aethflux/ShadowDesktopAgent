@@ -2,13 +2,16 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline';" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' 'unsafe-inline'; media-src 'self' http://127.0.0.1:8787 http://localhost:8787 data: blob:;"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hoshino Pet</title>
     <link rel="stylesheet" href="./pet.css" />
   </head>
   <body>
-    <div class="pet-shell" id="petShell">
+    <div class="pet-shell avatar-streamer" id="petShell">
       <div class="aura"></div>
       <div class="watch-dot" id="watchDot" title="持续陪伴状态"></div>
       <div class="pet-bubble" id="petBubble">右键开启持续陪伴，双击也可以切换。</div>
@@ -37,8 +40,35 @@
           </div>
           <div class="bangs"></div>
           <div class="hair-clip"></div>
+          <div class="headset"></div>
+          <div class="mic"></div>
         </div>
       </div>
+      <form class="mini-chat" id="miniChat" data-no-drag>
+        <div class="mini-chat-row">
+          <input id="miniChatInput" type="text" placeholder="输入一句话..." autocomplete="off" />
+          <button id="miniChatSend" type="submit">发送</button>
+        </div>
+        <div class="mini-controls">
+          <label>
+            <span>形象</span>
+            <select id="avatarSelect" aria-label="形象">
+              <option value="streamer">虚拟主播</option>
+              <option value="swordswoman">见习剑士</option>
+              <option value="cyber">电子搭档</option>
+            </select>
+          </label>
+          <label>
+            <span>音色</span>
+            <select id="voiceSelect" aria-label="音色">
+              <option value="warm-girl">清亮女声</option>
+              <option value="sweet-lady">甜美女声</option>
+              <option value="gentleman">青年男声</option>
+              <option value="storyteller">旁白男声</option>
+            </select>
+          </label>
+        </div>
+      </form>
     </div>
     <script type="module" src="./pet.js"></script>
   </body>

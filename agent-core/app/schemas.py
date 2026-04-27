@@ -85,11 +85,11 @@ class VoiceTTSRequest(BaseModel):
 
 class VoiceTTSResponse(BaseModel):
     text: str
-    engine: Literal["browser-speech", "minimax"] = "browser-speech"
+    engine: Literal["browser-speech", "edge", "modelscope", "minimax", "gemini"] = "browser-speech"
     voice: str | None = None
     rate: float = 1.0
     pitch: float = 1.05
-    audio_url: str | None = None  # set when engine=minimax
+    audio_url: str | None = None  # set when cloud TTS generated audio
 
 
 class MemoryItem(BaseModel):
@@ -120,6 +120,7 @@ class ObservationState(BaseModel):
     session_id: str
     last_comment: str | None = None
     last_topic: str | None = None
+    last_screen_hash: str | None = None
     observation_count: int = 0
 
 

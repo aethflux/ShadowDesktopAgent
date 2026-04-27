@@ -1,5 +1,6 @@
 from pathlib import Path
 import uuid
+from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -19,13 +20,38 @@ from app.schemas import (
 )
 from app.services import voice as voice_service
 
-app = FastAPI(title=settings.app_name)
 orchestrator = MultiAgentOrchestrator()
+
+
+def _allowed_origins() -> list[str]:
+    if settings.desktop_origin == "*":
+        return ["*"]
+    return sorted(
+        {
+            settings.desktop_origin.rstrip("/"),
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        }
+    )
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Discover MCP tools lazily so a missing npx / server binary doesn't
+    # prevent the HTTP server from booting.
+    await orchestrator.bootstrap()
+    try:
+        yield
+    finally:
+        await orchestrator.mcp.shutdown()
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*", settings.desktop_origin],
-    allow_credentials=True,
+    allow_origins=_allowed_origins(),
+    allow_credentials=settings.desktop_origin != "*",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -46,19 +72,6 @@ app.mount(
     name="audio",
 )
 
-
-@app.on_event("startup")
-async def _startup() -> None:
-    # Discover MCP tools lazily so a missing npx / server binary doesn't
-    # prevent the HTTP server from booting.
-    await orchestrator.bootstrap()
-
-
-@app.on_event("shutdown")
-async def _shutdown() -> None:
-    await orchestrator.mcp.shutdown()
-
-
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "provider": settings.provider, "model": settings.resolved_model()}
@@ -78,12 +91,20 @@ async def capabilities() -> dict:
         "skills": [s.model_dump() for s in orchestrator.skills.list_skills()],
         "provider": settings.provider,
         "model": settings.resolved_model(),
+        "vision_provider": settings.vision_provider,
+        "vision_model": settings.vision_model,
         "embedding_provider": settings.embedding_provider,
         "embedding_model": settings.embedding_model,
         "features": {
-            "vision": desktop_agent.model_client.supports_vision(),
+            "vision": desktop_agent.vision_client.supports_vision(),
             "browser_speech": True,
-            "cloud_tts": settings.enable_minimax_voice,
+            "cloud_tts": voice_service.cloud_tts_enabled(),
+            "tts_engine": voice_service.active_tts_engine(),
+            "tts_note": (
+                "Browser speech fallback is active because cloud TTS is disabled."
+                if not voice_service.cloud_tts_enabled()
+                else "Cloud TTS is enabled and will fall back to browser speech on failure."
+            ),
             "semantic_memory": settings.enable_semantic_memory,
         },
     }
@@ -107,13 +128,13 @@ async def profile(session_id: str) -> UserProfile:
 
 @app.post("/api/voice/tts", response_model=VoiceTTSResponse)
 async def tts(request: VoiceTTSRequest) -> VoiceTTSResponse:
-    """Return browser-speech parameters by default.
+    """Return cloud TTS audio when enabled.
 
-    MiniMax TTS is optional and stays disabled unless a deployment explicitly
-    enables it with working speech quota.
+    Edge / ModelScope / MiniMax / Gemini TTS is optional. Browser speech stays as the
+    fallback when cloud generation fails.
     """
-    if not settings.enable_minimax_voice or not request.text.strip():
-        # Browser Web Speech API — return params unchanged.
+    use_cloud = voice_service.cloud_tts_enabled() and request.text.strip()
+    if not use_cloud:
         return VoiceTTSResponse(
             text=request.text,
             engine="browser-speech",
@@ -122,22 +143,39 @@ async def tts(request: VoiceTTSRequest) -> VoiceTTSResponse:
             pitch=request.pitch,
         )
 
-    audio_bytes, mime_type = await voice_service.synthesize_speech(
-        text=request.text,
-        voice=request.voice,
-        speed=request.rate,   # Web Speech rate → MiniMax speed
-        pitch=request.pitch,
-    )
+    try:
+        tts_result = await voice_service.synthesize_speech(
+            text=request.text,
+            voice=request.voice,
+            speed=request.rate,
+            pitch=request.pitch,
+        )
+    except Exception:
+        return VoiceTTSResponse(
+            text=request.text,
+            engine="browser-speech",
+            voice=request.voice,
+            rate=request.rate,
+            pitch=request.pitch,
+        )
 
-    # Write to artifacts/audio/ and return the URL for the frontend to <audio src>.
-    filename = f"tts-{Path(__file__).resolve().stem}-{uuid.uuid4().hex[:8]}{voice_service.audio_ext_from_mime(mime_type)}"
+    if not tts_result.audio:
+        return VoiceTTSResponse(
+            text=request.text,
+            engine="browser-speech",
+            voice=request.voice,
+            rate=request.rate,
+            pitch=request.pitch,
+        )
+
+    filename = f"tts-{uuid.uuid4().hex[:8]}{voice_service.audio_ext_from_mime(tts_result.mime_type)}"
     out_path = _audio_dir / filename
-    out_path.write_bytes(audio_bytes)
+    out_path.write_bytes(tts_result.audio)
 
     return VoiceTTSResponse(
         text=request.text,
-        engine="minimax",
-        voice=request.voice or settings.minimax_tts_voice_id,
+        engine=tts_result.engine,
+        voice=tts_result.voice,
         rate=request.rate,
         pitch=request.pitch,
         audio_url=f"/artifacts/audio/{filename}",

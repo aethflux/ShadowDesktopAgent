@@ -3,8 +3,12 @@
 import base64
 from pathlib import Path
 
+from PIL import Image
+
 from app.agents.llm_agent import LLMAgent
+from app.config import settings
 from app.schemas import ChatAttachment, ObservationState, ToolCallRecord
+from app.services.model_client import ModelClient
 from app.tools.registry import ToolRegistry
 
 
@@ -18,6 +22,13 @@ class DesktopAgent(LLMAgent):
         "Do not operate the GUI or propose automatic clicks unless the user explicitly asks for abstract strategy only. "
         "Be warm, concise, visually grounded, brave, encouraging, and conversational."
     )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.vision_client = ModelClient(
+            provider=settings.vision_provider,
+            model=settings.vision_model,
+        )
 
     def _should_observe_screen(self, message: str) -> bool:
         lowered = message.lower()
@@ -33,6 +44,43 @@ class DesktopAgent(LLMAgent):
         encoded = base64.b64encode(file_path.read_bytes()).decode("utf-8")
         return f"data:image/png;base64,{encoded}"
 
+    @staticmethod
+    def _screen_hash(path: str) -> str:
+        with Image.open(path) as image:
+            grayscale = image.convert("L").resize((8, 8), Image.Resampling.LANCZOS)
+            pixels = list(grayscale.getdata())
+        average = sum(pixels) / len(pixels)
+        bits = "".join("1" if pixel >= average else "0" for pixel in pixels)
+        return f"{int(bits, 2):016x}"
+
+    @staticmethod
+    def _hash_distance(left: str | None, right: str | None) -> int:
+        if not left or not right:
+            return 64
+        return (int(left, 16) ^ int(right, 16)).bit_count()
+
+    def _vision_unavailable_reply(self) -> str:
+        return (
+            "当前视觉模型暂时不可用。请检查 VISION_PROVIDER、VISION_MODEL 和对应 API key。"
+        )
+
+    async def _handle_image_attachments(
+        self,
+        message: str,
+        attachments: list[ChatAttachment],
+        memory_summary: str,
+    ) -> tuple[str, list[ToolCallRecord]]:
+        if not self.vision_client.supports_vision():
+            return self._vision_unavailable_reply(), []
+
+        messages = self.build_messages(message, attachments, memory_summary)
+        try:
+            response = await self.vision_client.chat(messages, tools=None)
+            reply = self.vision_client.extract_text(response).strip()
+        except Exception as exc:
+            reply = f"图片分析暂时失败：{exc}"
+        return reply or "我看到了图片，但当前视觉模型没有返回有效描述。", []
+
     async def observe_screen(
         self,
         message: str,
@@ -42,12 +90,23 @@ class DesktopAgent(LLMAgent):
         trigger: str,
     ) -> tuple[str, list[ToolCallRecord], str, bool, str | None]:
         tool_calls: list[ToolCallRecord] = []
-        if not self.model_client.supports_vision():
-            reply = "当前配置只支持文本对话，暂时看不了屏幕内容。要启用视觉分析，需要换成支持图像输入的模型。"
+        if not self.vision_client.supports_vision():
+            reply = self._vision_unavailable_reply()
             return reply, tool_calls, "low", trigger == "manual", "vision-unavailable"
 
         screenshot_path = await registry.arun("screen.capture", {})
         tool_calls.append(ToolCallRecord(name="screen.capture", args={}, result=screenshot_path))
+        screen_hash = self._screen_hash(screenshot_path)
+
+        if (
+            trigger == "interval"
+            and observation_state.last_screen_hash
+            and self._hash_distance(observation_state.last_screen_hash, screen_hash) <= 4
+        ):
+            observation_state.last_screen_hash = screen_hash
+            return "", tool_calls, "low", False, observation_state.last_topic or "screen-unchanged"
+
+        observation_state.last_screen_hash = screen_hash
         screenshot_url = self._to_data_url(screenshot_path)
 
         system_prompt = (
@@ -80,7 +139,7 @@ class DesktopAgent(LLMAgent):
         ]
 
         try:
-            result = await self.model_client.complete_structured_messages(messages)
+            result = await self.vision_client.complete_structured_messages(messages)
             reply = str(result.get("reply") or "").strip()
             significance = str(result.get("significance") or "medium").strip().lower()
             should_speak = bool(result.get("should_speak", True))
@@ -113,6 +172,8 @@ class DesktopAgent(LLMAgent):
         memory_summary: str,
         session_id: str,
     ) -> tuple[str, list[ToolCallRecord]]:
+        if attachments:
+            return await self._handle_image_attachments(message, attachments, memory_summary)
         if not self._should_observe_screen(message):
             return await super().handle(message, registry, attachments, memory_summary, session_id)
         reply, tool_calls, _significance, _should_speak, _topic = await self.observe_screen(
