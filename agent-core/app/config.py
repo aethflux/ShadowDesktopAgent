@@ -141,6 +141,10 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        # Validate values on direct attribute assignment so a bad
+        # /api/settings PUT (e.g. provider='not-a-provider') is rejected
+        # instead of being silently stored.
+        validate_assignment=True,
     )
 
     @staticmethod

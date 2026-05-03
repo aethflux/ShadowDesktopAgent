@@ -147,3 +147,95 @@ class Skill(BaseModel):
     triggers: list[str] = Field(default_factory=list)
     prompt: str = ""          # content after the YAML frontmatter
     dir_path: str = ""         # absolute path to the skill directory
+
+
+class ProviderInfo(BaseModel):
+    """Status of one LLM provider — used by the settings UI to show which
+    provider is configured / available."""
+    id: str
+    display_name: str
+    configured: bool          # an API key is present
+    default_model: str
+    supports_vision: bool
+
+
+class SettingsView(BaseModel):
+    """Read-only public view of mutable settings, with light context.
+
+    Secrets (api_key etc.) are deliberately absent — they live in ``.env``
+    and never round-trip through the UI.
+    """
+    # LLM
+    provider: str
+    model: str
+    vision_provider: str
+    vision_model: str
+    enable_prompt_cache: bool
+    openai_model: str | None = None
+    anthropic_model: str | None = None
+    vllm_model: str | None = None
+    minimax_model: str | None = None
+    modelscope_model: str | None = None
+    # Reliability
+    model_max_retries: int
+    model_retry_backoff_seconds: float
+    anthropic_max_tokens: int
+    # Memory
+    enable_semantic_memory: bool
+    semantic_top_k: int
+    # Voice
+    enable_edge_tts: bool
+    edge_tts_voice: str
+    edge_tts_rate: str
+    edge_tts_pitch: str
+    enable_minimax_voice: bool
+    minimax_tts_voice_id: str
+    minimax_tts_speed: float
+    minimax_tts_pitch: float
+    enable_modelscope_tts: bool
+    enable_gemini_tts: bool
+    gemini_tts_voice: str
+    # Behavior
+    rate_limit_capacity: int
+    rate_limit_refill_per_second: float
+    tts_audio_retention_hours: int
+    enable_gui_automation: bool
+
+
+class SettingsPatch(BaseModel):
+    """Optional update mask. Any field omitted is left unchanged."""
+    # LLM
+    provider: str | None = None
+    model: str | None = None
+    vision_provider: str | None = None
+    vision_model: str | None = None
+    enable_prompt_cache: bool | None = None
+    openai_model: str | None = None
+    anthropic_model: str | None = None
+    vllm_model: str | None = None
+    minimax_model: str | None = None
+    modelscope_model: str | None = None
+    # Reliability
+    model_max_retries: int | None = None
+    model_retry_backoff_seconds: float | None = None
+    anthropic_max_tokens: int | None = None
+    # Memory
+    enable_semantic_memory: bool | None = None
+    semantic_top_k: int | None = None
+    # Voice
+    enable_edge_tts: bool | None = None
+    edge_tts_voice: str | None = None
+    edge_tts_rate: str | None = None
+    edge_tts_pitch: str | None = None
+    enable_minimax_voice: bool | None = None
+    minimax_tts_voice_id: str | None = None
+    minimax_tts_speed: float | None = None
+    minimax_tts_pitch: float | None = None
+    enable_modelscope_tts: bool | None = None
+    enable_gemini_tts: bool | None = None
+    gemini_tts_voice: str | None = None
+    # Behavior
+    rate_limit_capacity: int | None = None
+    rate_limit_refill_per_second: float | None = None
+    tts_audio_retention_hours: int | None = None
+    enable_gui_automation: bool | None = None

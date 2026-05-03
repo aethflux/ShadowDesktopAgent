@@ -13,18 +13,22 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.logging import get_logger
 from app.orchestrator import MultiAgentOrchestrator
+from app.rate_limit import TokenBucketRateLimiter
 from app.schemas import (
     ChatRequest,
     ChatResponse,
     ObservationRequest,
     ObservationResponse,
+    ProviderInfo,
+    SettingsPatch,
+    SettingsView,
     UserProfile,
     VoiceTTSRequest,
     VoiceTTSResponse,
 )
-from app.rate_limit import TokenBucketRateLimiter
 from app.services import voice as voice_service
 from app.services.model_client import close_http_client
+from app.services.settings_store import store as settings_store
 
 logger = get_logger("main")
 orchestrator = MultiAgentOrchestrator()
@@ -71,6 +75,14 @@ def _allowed_origins() -> list[str]:
 _artifacts_dir = settings.screenshots_dir.resolve().parent
 _audio_dir = _artifacts_dir / "audio"
 _audio_dir.mkdir(parents=True, exist_ok=True)
+
+# Apply any persisted user-mutable overrides on top of the env-driven config
+# *before* the orchestrator wires things up. Subsequent /api/settings PUTs
+# mutate ``settings`` in place — ModelClient and friends read from it on every
+# call, so changes propagate without a restart.
+_applied_overrides = settings_store.apply_to(settings)
+if _applied_overrides:
+    logger.info("Loaded %d persisted setting override(s)", len(_applied_overrides))
 
 
 @asynccontextmanager
@@ -161,6 +173,92 @@ async def ready() -> dict:
             "tts_engine": voice_service.active_tts_engine(),
             "asr_enabled": settings.enable_minimax_voice,
         },
+    }
+
+
+@app.get("/api/settings", response_model=SettingsView)
+async def get_settings() -> SettingsView:
+    """Return all user-mutable settings as a flat dict.
+
+    Secrets (``api_key`` etc.) are intentionally absent — they live in ``.env``
+    and never round-trip through the UI.
+    """
+    return SettingsView(
+        provider=settings.provider,
+        model=settings.resolved_model(),
+        vision_provider=settings.vision_provider,
+        vision_model=settings.vision_model,
+        enable_prompt_cache=settings.enable_prompt_cache,
+        openai_model=settings.openai_model,
+        anthropic_model=settings.anthropic_model,
+        vllm_model=settings.vllm_model,
+        minimax_model=settings.minimax_model,
+        modelscope_model=settings.modelscope_model,
+        model_max_retries=settings.model_max_retries,
+        model_retry_backoff_seconds=settings.model_retry_backoff_seconds,
+        anthropic_max_tokens=settings.anthropic_max_tokens,
+        enable_semantic_memory=settings.enable_semantic_memory,
+        semantic_top_k=settings.semantic_top_k,
+        enable_edge_tts=settings.enable_edge_tts,
+        edge_tts_voice=settings.edge_tts_voice,
+        edge_tts_rate=settings.edge_tts_rate,
+        edge_tts_pitch=settings.edge_tts_pitch,
+        enable_minimax_voice=settings.enable_minimax_voice,
+        minimax_tts_voice_id=settings.minimax_tts_voice_id,
+        minimax_tts_speed=settings.minimax_tts_speed,
+        minimax_tts_pitch=settings.minimax_tts_pitch,
+        enable_modelscope_tts=settings.enable_modelscope_tts,
+        enable_gemini_tts=settings.enable_gemini_tts,
+        gemini_tts_voice=settings.gemini_tts_voice,
+        rate_limit_capacity=settings.rate_limit_capacity,
+        rate_limit_refill_per_second=settings.rate_limit_refill_per_second,
+        tts_audio_retention_hours=settings.tts_audio_retention_hours,
+        enable_gui_automation=settings.enable_gui_automation,
+    )
+
+
+@app.put("/api/settings", response_model=SettingsView)
+async def update_settings(patch: SettingsPatch) -> SettingsView:
+    """Update one or more user-mutable settings, persist the patch, and
+    apply it to the running config in place. Returns the new effective view."""
+    # Drop unset (None) fields — Pydantic's exclude_unset honours the actual
+    # request body, so a missing key isn't treated as "set to None".
+    diff = patch.model_dump(exclude_unset=True)
+    if not diff:
+        return await get_settings()
+    try:
+        settings_store.update(diff, settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return await get_settings()
+
+
+@app.get("/api/settings/providers")
+async def list_providers() -> dict:
+    """Catalog of LLM providers with per-provider configuration status."""
+    catalog: list[ProviderInfo] = []
+    for provider_id, display, default_model, vision in (
+        ("minimax", "MiniMax", settings.minimax_model or "MiniMax-M2.7", False),
+        ("modelscope", "ModelScope", settings.modelscope_model or "Qwen/Qwen3-VL-8B-Instruct", True),
+        ("openai", "OpenAI", settings.openai_model or "gpt-4o-mini", True),
+        ("anthropic", "Anthropic", settings.anthropic_model or "claude-sonnet-4-20250514", True),
+        ("vllm", "Local vLLM", settings.vllm_model or "Qwen/Qwen2.5-14B-Instruct", False),
+    ):
+        api_key = settings.resolved_api_key(provider_id)  # type: ignore[arg-type]
+        configured = bool(api_key) and api_key != "EMPTY"
+        catalog.append(
+            ProviderInfo(
+                id=provider_id,
+                display_name=display,
+                configured=configured,
+                default_model=default_model,
+                supports_vision=vision,
+            )
+        )
+    return {
+        "current": settings.provider,
+        "current_vision": settings.vision_provider,
+        "providers": [info.model_dump() for info in catalog],
     }
 
 

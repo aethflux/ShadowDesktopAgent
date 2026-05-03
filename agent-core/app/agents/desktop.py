@@ -6,7 +6,6 @@ from pathlib import Path
 from PIL import Image
 
 from app.agents.llm_agent import LLMAgent
-from app.config import settings
 from app.schemas import ChatAttachment, ObservationState, ToolCallRecord
 from app.services.model_client import ModelClient
 from app.tools.registry import ToolRegistry
@@ -25,10 +24,10 @@ class DesktopAgent(LLMAgent):
 
     def __init__(self) -> None:
         super().__init__()
-        self.vision_client = ModelClient(
-            provider=settings.vision_provider,
-            model=settings.vision_model,
-        )
+        # purpose="vision" lets the client follow ``settings.vision_provider``
+        # and ``settings.vision_model`` dynamically — runtime switches via
+        # /api/settings take effect immediately without rebuilding the agent.
+        self.vision_client = ModelClient(purpose="vision")
 
     def _should_observe_screen(self, message: str) -> bool:
         lowered = message.lower()

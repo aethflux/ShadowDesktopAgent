@@ -34,6 +34,14 @@ const sessionListEl = document.getElementById("sessionList");
 const newSessionBtn = document.getElementById("newSessionBtn");
 const streamingToggle = document.getElementById("streamingToggle");
 const readyDot = document.getElementById("readyDot");
+const settingsBtn = document.getElementById("settingsBtn");
+const settingsBackdrop = document.getElementById("settingsBackdrop");
+const settingsClose = document.getElementById("settingsClose");
+const settingsTabs = document.getElementById("settingsTabs");
+const settingsBody = document.getElementById("settingsBody");
+const settingsRefresh = document.getElementById("settingsRefresh");
+const settingsSave = document.getElementById("settingsSave");
+const settingsStatus = document.getElementById("settingsStatus");
 
 // ---------------------------------------------------------------------------
 // Safe DOM helpers
@@ -719,3 +727,320 @@ loadCapabilities().catch((error) => {
 });
 refreshReady();
 setInterval(refreshReady, 30_000);
+
+// ===========================================================================
+// Settings modal
+// ===========================================================================
+
+let settingsState = null;        // last-loaded backend snapshot
+let providerListing = null;      // /api/settings/providers result
+let pendingPatch = {};           // unsaved field deltas
+let activeTab = "general";
+
+function setSettingsStatus(text, kind = "") {
+  if (!settingsStatus) return;
+  settingsStatus.textContent = text || "";
+  settingsStatus.className = `settings-status${kind ? " " + kind : ""}`;
+}
+
+function openSettings(focusTab) {
+  if (focusTab) selectTab(focusTab);
+  settingsBackdrop.hidden = false;
+  // Lazy-load on first open + refresh whenever opened so the values match
+  // any change made via the pet's right-click menu while it was closed.
+  reloadSettings();
+}
+
+function closeSettings() {
+  settingsBackdrop.hidden = true;
+  pendingPatch = {};
+  setSettingsStatus("");
+}
+
+function selectTab(name) {
+  activeTab = name;
+  settingsTabs.querySelectorAll("button").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === name);
+  });
+  renderSettingsBody();
+}
+
+settingsBtn?.addEventListener("click", () => openSettings());
+settingsClose?.addEventListener("click", () => closeSettings());
+settingsBackdrop?.addEventListener("click", (event) => {
+  if (event.target === settingsBackdrop) closeSettings();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !settingsBackdrop.hidden) closeSettings();
+});
+settingsTabs?.addEventListener("click", (event) => {
+  const btn = event.target.closest("button[data-tab]");
+  if (btn) selectTab(btn.dataset.tab);
+});
+settingsRefresh?.addEventListener("click", () => reloadSettings());
+settingsSave?.addEventListener("click", () => saveSettings());
+
+// The pet's right-click menu can deep-link into a specific tab.
+window.bishoujo.onOpenSettings?.((tab) => openSettings(tab || "general"));
+
+async function reloadSettings() {
+  setSettingsStatus("正在加载设置...");
+  try {
+    const [agent, providers] = await Promise.all([
+      window.bishoujo.agentSettings(),
+      window.bishoujo.listProviders(),
+    ]);
+    settingsState = { ...agent };
+    providerListing = providers;
+    pendingPatch = {};
+    renderSettingsBody();
+    setSettingsStatus("已加载", "ok");
+    setTimeout(() => setSettingsStatus(""), 1500);
+  } catch (error) {
+    setSettingsStatus(`加载失败：${error.message}`, "error");
+  }
+}
+
+async function saveSettings() {
+  if (!Object.keys(pendingPatch).length) {
+    setSettingsStatus("没有要保存的改动");
+    return;
+  }
+  setSettingsStatus("正在保存...");
+  try {
+    const updated = await window.bishoujo.updateAgentSettings(pendingPatch);
+    settingsState = { ...updated };
+    pendingPatch = {};
+    renderSettingsBody();
+    refreshReady();
+    setSettingsStatus("已保存", "ok");
+    setTimeout(() => setSettingsStatus(""), 1500);
+  } catch (error) {
+    setSettingsStatus(`保存失败：${error.message}`, "error");
+  }
+}
+
+function effectiveValue(key) {
+  return key in pendingPatch ? pendingPatch[key] : settingsState?.[key];
+}
+
+function setPending(key, value) {
+  if (settingsState && settingsState[key] === value) {
+    delete pendingPatch[key];
+  } else {
+    pendingPatch[key] = value;
+  }
+  // Update the dirty indicator without re-rendering the whole tab —
+  // re-rendering would steal focus from the input the user is editing.
+  if (Object.keys(pendingPatch).length) {
+    setSettingsStatus(`有 ${Object.keys(pendingPatch).length} 项未保存`, "dirty");
+  } else {
+    setSettingsStatus("");
+  }
+}
+
+// ---- Field builders ------------------------------------------------------
+
+function fieldGroup(label, hint, child) {
+  const group = el("div", { className: "field" }, [
+    el("label", { className: "field-label", text: label }),
+    child,
+  ]);
+  if (hint) {
+    group.appendChild(el("p", { className: "field-hint", text: hint }));
+  }
+  return group;
+}
+
+function toggleField(label, hint, key) {
+  const wrapper = el("div", { className: "field field-toggle" });
+  const labelEl = el("div", { className: "field-toggle-text" }, [
+    el("span", { className: "field-label", text: label }),
+    hint ? el("span", { className: "field-hint", text: hint }) : null,
+  ]);
+  const sw = el("label", { className: "switch" });
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = !!effectiveValue(key);
+  input.addEventListener("change", () => setPending(key, input.checked));
+  const slider = el("span", { className: "slider" });
+  sw.appendChild(input);
+  sw.appendChild(slider);
+  wrapper.appendChild(labelEl);
+  wrapper.appendChild(sw);
+  return wrapper;
+}
+
+function selectField(label, hint, key, options) {
+  const select = document.createElement("select");
+  for (const opt of options) {
+    const o = document.createElement("option");
+    o.value = opt.value;
+    o.textContent = opt.label;
+    if (opt.disabled) o.disabled = true;
+    select.appendChild(o);
+  }
+  select.value = String(effectiveValue(key) ?? "");
+  select.addEventListener("change", () => setPending(key, select.value));
+  return fieldGroup(label, hint, select);
+}
+
+function textField(label, hint, key, { type = "text", placeholder = "" } = {}) {
+  const input = document.createElement("input");
+  input.type = type;
+  input.placeholder = placeholder;
+  const value = effectiveValue(key);
+  input.value = value == null ? "" : String(value);
+  input.addEventListener("input", () => {
+    let next = input.value;
+    if (type === "number") next = next === "" ? null : Number(next);
+    setPending(key, next);
+  });
+  return fieldGroup(label, hint, input);
+}
+
+function sliderField(label, hint, key, { min = 0, max = 1, step = 0.05 } = {}) {
+  const wrapper = el("div", { className: "field field-slider" });
+  const top = el("div", { className: "field-slider-top" }, [
+    el("span", { className: "field-label", text: label }),
+    el("span", { className: "field-value", text: String(effectiveValue(key) ?? "") }),
+  ]);
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = String(min);
+  input.max = String(max);
+  input.step = String(step);
+  input.value = String(effectiveValue(key) ?? min);
+  const valueEl = top.querySelector(".field-value");
+  input.addEventListener("input", () => {
+    const next = Number(input.value);
+    valueEl.textContent = next.toString();
+    setPending(key, next);
+  });
+  wrapper.appendChild(top);
+  wrapper.appendChild(input);
+  if (hint) wrapper.appendChild(el("p", { className: "field-hint", text: hint }));
+  return wrapper;
+}
+
+// ---- Tab content --------------------------------------------------------
+
+function renderSettingsBody() {
+  if (!settingsBody) return;
+  clearChildren(settingsBody);
+  if (!settingsState) {
+    settingsBody.appendChild(el("p", { className: "empty", text: "还未加载到设置。" }));
+    return;
+  }
+  if (activeTab === "general") renderGeneralTab();
+  else if (activeTab === "voice") renderVoiceTab();
+  else if (activeTab === "memory") renderMemoryTab();
+  else renderAboutTab();
+}
+
+function providerOptions(filter = () => true) {
+  if (!providerListing) return [{ value: "", label: "(provider 列表加载中)" }];
+  return providerListing.providers.filter(filter).map((p) => ({
+    value: p.id,
+    label: `${p.display_name}${p.configured ? "" : "  (未配置 API key)"}`,
+    disabled: !p.configured,
+  }));
+}
+
+function renderGeneralTab() {
+  const groups = el("div", { className: "settings-section" }, [
+    el("h3", { text: "对话模型" }),
+    selectField("当前 Provider", "切换后立即生效，所有对话/分析都走新 provider。", "provider", providerOptions()),
+    textField("当前 model（覆盖 provider 默认值）", "留空则使用各 provider 默认模型。", "model"),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "视觉模型" }),
+    selectField("视觉 Provider", "用于屏幕观察、图片理解。", "vision_provider", providerOptions((p) => p.supports_vision)),
+    textField("视觉 model id", "例如 Qwen/Qwen3-VL-8B-Instruct。", "vision_model"),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "可靠性" }),
+    toggleField("Anthropic Prompt Caching", "对屏幕观察等长 prompt 节省 token。", "enable_prompt_cache"),
+    textField("最大重试次数", "5xx / 429 / 网络错误重试上限。", "model_max_retries", { type: "number" }),
+    textField("重试退避基准 (秒)", "实际等待按指数增长。", "model_retry_backoff_seconds", { type: "number" }),
+    textField("Anthropic max_tokens", "Anthropic 单轮回复 token 上限。", "anthropic_max_tokens", { type: "number" }),
+  ]);
+  settingsBody.appendChild(groups);
+}
+
+function renderVoiceTab() {
+  const groups = el("div", { className: "settings-section" }, [
+    el("h3", { text: "Edge Neural TTS（默认云端 TTS）" }),
+    toggleField("启用 Edge TTS", "失败时自动回落到浏览器 Speech Synthesis。", "enable_edge_tts"),
+    selectField(
+      "Edge 音色",
+      "微软 Edge 神经网络音色 ID。",
+      "edge_tts_voice",
+      [
+        { value: "zh-CN-XiaoxiaoNeural", label: "中文 · 晓晓 (清亮女声)" },
+        { value: "zh-CN-YunxiNeural", label: "中文 · 云希 (青年男声)" },
+        { value: "zh-CN-YunyangNeural", label: "中文 · 云扬 (旁白男声)" },
+        { value: "zh-CN-XiaoyiNeural", label: "中文 · 晓伊 (甜美少女)" },
+        { value: "zh-CN-YunjianNeural", label: "中文 · 云健 (沉稳男声)" },
+        { value: "zh-CN-XiaohanNeural", label: "中文 · 晓涵 (温柔女声)" },
+        { value: "en-US-JennyNeural", label: "English · Jenny" },
+        { value: "en-US-GuyNeural", label: "English · Guy" },
+      ],
+    ),
+    textField("语速调整 (%)", "例如 +0% / +10% / -20%。", "edge_tts_rate"),
+    textField("音调调整 (Hz)", "例如 +0Hz / +50Hz / -30Hz。", "edge_tts_pitch"),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "MiniMax Speech (可选)" }),
+    toggleField("启用 MiniMax 语音", "需要 MINIMAX_API_KEY 有 speech 配额。", "enable_minimax_voice"),
+    textField("MiniMax 音色 ID", "", "minimax_tts_voice_id"),
+    sliderField("MiniMax 语速", "1.0 是常速。", "minimax_tts_speed", { min: 0.5, max: 2.0, step: 0.05 }),
+    sliderField("MiniMax 音调", "0 是默认。", "minimax_tts_pitch", { min: -12, max: 12, step: 1 }),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "其它 TTS 引擎" }),
+    toggleField("启用 ModelScope CosyVoice", "中文情感 TTS，音色更自然。", "enable_modelscope_tts"),
+    toggleField("启用 Gemini TTS", "需要 GEMINI_TTS_API_KEY。", "enable_gemini_tts"),
+    selectField(
+      "Gemini 音色",
+      "",
+      "gemini_tts_voice",
+      [
+        { value: "Kore", label: "Kore" },
+        { value: "Charon", label: "Charon" },
+        { value: "Puck", label: "Puck" },
+        { value: "Aoede", label: "Aoede" },
+      ],
+    ),
+  ]);
+  settingsBody.appendChild(groups);
+}
+
+function renderMemoryTab() {
+  const groups = el("div", { className: "settings-section" }, [
+    el("h3", { text: "语义记忆" }),
+    toggleField("启用语义记忆", "用 chromadb 做语义召回。关闭后只用最近 N 轮摘要。", "enable_semantic_memory"),
+    textField("召回 Top K", "每次召回多少条最相关历史。", "semantic_top_k", { type: "number" }),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "限流与清理" }),
+    textField("限流容量 (token-bucket)", "0 = 关闭限流。", "rate_limit_capacity", { type: "number" }),
+    textField("限流补充速率 (req/s)", "", "rate_limit_refill_per_second", { type: "number" }),
+    textField("TTS 音频保留 (小时)", "0 = 永久保留；启动时清理过期文件。", "tts_audio_retention_hours", { type: "number" }),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "桌面自动化" }),
+    toggleField("允许 GUI 自动化工具", "默认关闭，启用后 LLM 可以请求点击/按键。", "enable_gui_automation"),
+  ]);
+  settingsBody.appendChild(groups);
+}
+
+function renderAboutTab() {
+  const lines = [
+    `Provider: ${settingsState.provider} → ${settingsState.model}`,
+    `Vision:   ${settingsState.vision_provider} → ${settingsState.vision_model}`,
+    `Edge TTS: ${settingsState.enable_edge_tts ? "on" : "off"} (${settingsState.edge_tts_voice})`,
+    `Memory:   semantic ${settingsState.enable_semantic_memory ? "on" : "off"} · top-k ${settingsState.semantic_top_k}`,
+    `Rate limit: ${settingsState.rate_limit_capacity} tokens @ ${settingsState.rate_limit_refill_per_second}/s`,
+  ];
+  const pre = el("pre", { className: "about-pre", text: lines.join("\n") });
+  const links = el("p", { className: "field-hint" }, [
+    el("span", { text: "API keys 在 .env 中管理（API_KEY 不会通过本面板传输）。完整文档见 README。" }),
+  ]);
+  settingsBody.appendChild(pre);
+  settingsBody.appendChild(links);
+}

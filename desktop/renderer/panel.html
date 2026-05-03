@@ -17,8 +17,32 @@
         <div class="topbar-actions">
           <span id="readyDot" class="ready-dot" title="Backend status"></span>
           <button id="voiceBtn" class="ghost">语音输入</button>
+          <button id="settingsBtn" class="ghost compact" title="设置" aria-label="设置">⚙</button>
         </div>
       </header>
+
+      <!-- Settings modal — opened by the gear icon or via "Settings…" in the
+           pet's right-click menu. Hidden by default; CSS handles the fade. -->
+      <div class="modal-backdrop" id="settingsBackdrop" hidden>
+        <div class="modal" role="dialog" aria-labelledby="settingsTitle" aria-modal="true">
+          <header class="modal-head">
+            <h2 id="settingsTitle">设置</h2>
+            <button class="ghost compact" id="settingsClose" aria-label="关闭">✕</button>
+          </header>
+          <nav class="settings-tabs" id="settingsTabs">
+            <button data-tab="general" class="active">对话与模型</button>
+            <button data-tab="voice">语音</button>
+            <button data-tab="memory">记忆 · 行为</button>
+            <button data-tab="about">关于</button>
+          </nav>
+          <div class="settings-body" id="settingsBody"></div>
+          <footer class="modal-foot">
+            <span class="settings-status" id="settingsStatus" aria-live="polite"></span>
+            <button class="ghost" id="settingsRefresh">重新加载</button>
+            <button id="settingsSave">保存</button>
+          </footer>
+        </div>
+      </div>
 
       <section class="status-strip" id="capabilities"></section>
 

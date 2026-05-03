@@ -307,14 +307,44 @@ class ModelClient:
 
     All public methods return data shaped like an OpenAI chat completion so that
     upstream agents remain provider-agnostic.
+
+    Provider/model resolution is *dynamic*: the client reads ``settings.provider``
+    (or ``settings.vision_provider`` when ``purpose='vision'``) on every call,
+    so a runtime settings change via ``/api/settings`` is picked up immediately
+    without rebuilding the agent graph.
+
+    Pass ``provider=`` or ``model=`` to pin a specific value (mostly used by
+    tests). Pass ``purpose='vision'`` to opt into the vision config slot.
     """
 
-    def __init__(self, provider: Provider | None = None, model: str | None = None) -> None:
-        self.provider = provider or settings.provider
-        self.model = model
+    def __init__(
+        self,
+        provider: Provider | None = None,
+        model: str | None = None,
+        purpose: str = "default",
+    ) -> None:
+        self._provider_override = provider
+        self._model_override = model
+        self._purpose = purpose
+
+    @property
+    def provider(self) -> Provider:
+        if self._provider_override:
+            return self._provider_override
+        if self._purpose == "vision":
+            return settings.vision_provider
+        return settings.provider
+
+    @property
+    def model(self) -> str | None:
+        return self._model_override
 
     def resolved_model(self) -> str:
-        return self.model or settings.resolved_model(self.provider)
+        if self._model_override:
+            return self._model_override
+        if self._purpose == "vision":
+            return settings.vision_model
+        return settings.resolved_model(self.provider)
 
     def supports_vision(self) -> bool:
         model = self.resolved_model().lower()
