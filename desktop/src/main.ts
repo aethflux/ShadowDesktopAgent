@@ -5,13 +5,32 @@ const BACKEND_URL = process.env.BISHOUJO_AGENT_API ?? "http://127.0.0.1:8787";
 
 type Point = { x: number; y: number };
 type DragState = { startMouse: Point; startWindow: Point };
+type DesktopSettings = {
+  avatar: string;
+  voice: string;
+  watching: boolean;
+  voiceEnabled: boolean;
+  observeSpeechEnabled: boolean;
+};
 
 let petWindow: BrowserWindow | null = null;
 let panelWindow: BrowserWindow | null = null;
 let petDragState: DragState | null = null;
 let companionWatching = false;
+let desktopSettings: DesktopSettings = {
+  avatar: "streamer",
+  voice: "warm-girl",
+  watching: false,
+  voiceEnabled: true,
+  observeSpeechEnabled: true
+};
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) {
+  app.quit();
+}
 
 function attachWindowDiagnostics(name: string, win: BrowserWindow): void {
   win.webContents.on("did-finish-load", () => {
@@ -35,8 +54,8 @@ function attachWindowDiagnostics(name: string, win: BrowserWindow): void {
 
 function createPetWindow(): BrowserWindow {
   const display = screen.getPrimaryDisplay().workAreaSize;
-  const width = 240;
-  const height = 430;
+  const width = 170;
+  const height = 260;
   const win = new BrowserWindow({
     width,
     height,
@@ -61,10 +80,10 @@ function createPetWindow(): BrowserWindow {
 
 function createPanelWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1080,
-    height: 760,
-    minWidth: 920,
-    minHeight: 640,
+    width: 1160,
+    height: 820,
+    minWidth: 980,
+    minHeight: 700,
     title: "Hoshino Agent Console",
     autoHideMenuBar: true,
     show: false,
@@ -75,6 +94,11 @@ function createPanelWindow(): BrowserWindow {
   win.loadFile(path.join(__dirname, "../renderer/panel.html"));
   attachWindowDiagnostics("panel", win);
   return win;
+}
+
+function broadcastSettings(): void {
+  petWindow?.webContents.send("app:settings-changed", desktopSettings);
+  panelWindow?.webContents.send("app:settings-changed", desktopSettings);
 }
 
 function openPanelWindow(): void {
@@ -101,6 +125,18 @@ function togglePanelWindow(): void {
   }
 }
 
+app.on("second-instance", () => {
+  if (panelWindow) {
+    if (!panelWindow.isVisible()) {
+      panelWindow.show();
+    }
+    if (panelWindow.isMinimized()) {
+      panelWindow.restore();
+    }
+    panelWindow.focus();
+  }
+});
+
 async function captureScreen(): Promise<void> {
   const response = await fetch(`${BACKEND_URL}/api/screen/capture`, { method: "POST" });
   if (!response.ok) {
@@ -114,7 +150,9 @@ async function captureScreen(): Promise<void> {
 
 function setWatching(next: boolean): void {
   companionWatching = next;
+  desktopSettings = { ...desktopSettings, watching: next };
   petWindow?.webContents.send("pet:watching-changed", companionWatching);
+  broadcastSettings();
 }
 
 function showPetContextMenu(): void {
@@ -191,6 +229,20 @@ app.whenReady().then(() => {
     }
     return response.json();
   });
+  ipcMain.handle("agent:settings", async () => desktopSettings);
+  ipcMain.handle("agent:update-settings", async (_event, patch: Partial<DesktopSettings>) => {
+    desktopSettings = {
+      ...desktopSettings,
+      ...patch,
+      watching: patch.watching ?? desktopSettings.watching
+    };
+    companionWatching = desktopSettings.watching;
+    petWindow?.webContents.send("pet:watching-changed", companionWatching);
+    petWindow?.webContents.send("pet:avatar-changed", desktopSettings.avatar);
+    petWindow?.webContents.send("pet:voice-changed", desktopSettings.voice);
+    broadcastSettings();
+    return desktopSettings;
+  });
 
   ipcMain.on("pet:toggle-panel", () => togglePanelWindow());
   ipcMain.on("pet:show-context-menu", () => showPetContextMenu());
@@ -211,6 +263,18 @@ app.whenReady().then(() => {
 
   ipcMain.on("pet:drag-end", () => {
     petDragState = null;
+  });
+
+  ipcMain.on("pet:set-avatar", (_event, avatar: string) => {
+    desktopSettings = { ...desktopSettings, avatar };
+    petWindow?.webContents.send("pet:avatar-changed", avatar);
+    broadcastSettings();
+  });
+
+  ipcMain.on("pet:set-voice", (_event, voice: string) => {
+    desktopSettings = { ...desktopSettings, voice };
+    petWindow?.webContents.send("pet:voice-changed", voice);
+    broadcastSettings();
   });
 
   app.on("activate", () => {

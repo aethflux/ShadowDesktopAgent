@@ -10,20 +10,21 @@ Hoshino 是一个桌面数字分身 / 桌宠 Agent 项目，围绕常驻桌面�
 - 能通过文本、图片和语音与用户交流
 - 能持续观察屏幕，在合适的时候主动评论或提醒
 - 能维护用户画像、偏好、目标和近期记忆
-- 能调用工具，包括截图、终端、MCP/skills 扩展入口
+- 能调用工具，包括截图、受限终端、外部 CLI、MCP 和 skills 扩展入口
 - **支持 MiniMax / ModelScope / vLLM / OpenAI / Anthropic 五种 Provider 热切换，无需改代码**
 - **主聊天模型和视觉模型可拆分配置：文本走 MiniMax，截图/图片理解走 ModelScope VL**
 - **Anthropic Provider 启用 Prompt Caching，屏幕观察场景 token 成本降低 ~70%**
 - **基于 chromadb + ModelScope / OpenAI / hash embeddings 实现语义记忆检索**
-- **完整 MCP stdio JSON-RPC 实现，接入 filesystem server 真实调用**
-- **66 个 pytest 单元测试，GitHub Actions CI，Intent 路由准确率 100%（31/31）**
+- **完整 MCP stdio JSON-RPC 实现，接入 filesystem server 和可配置外部 MCP**
+- **受控 skills 安装/创建、allowlist 外部 CLI 调用、安全边界测试**
+- **83 个 pytest 单元测试，GitHub Actions CI，Intent 路由准确率 100%（31/31）**
 
 ## 架构图
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │                       Desktop (Electron UI)                          │
-│   桌宠窗口 (240×430) ◄──► 控制台 (1080×760) ◄──► 后端 HTTP API     │
+│   桌宠窗口 (170×260) ◄──► 控制台 (1080×760) ◄──► 后端 HTTP API     │
 └────────────────────────────┬─────────────────────────────────────────┘
                              │  POST /api/chat
                              ▼
@@ -39,14 +40,14 @@ Hoshino 是一个桌面数字分身 / 桌宠 Agent 项目，围绕常驻桌面�
 │  ┌────────────────┐  ┌────────────────┐  ┌─────────────────────┐   │
 │  │ MemoryStore    │  │ VectorStore    │  │ ToolRegistry        │   │
 │  │ JSONL session  │  │ (chromadb)    │  │ terminal/screen/    │   │
-│  │ + JSON profile │  │ semantic recall│  │ GUI + MCP bridge   │   │
+│  │ + JSON profile │  │ semantic recall│  │ terminal/cli/skill │   │
 │  └────────────────┘  └────────────────┘  └─────────────────────┘   │
 │                                              │                      │
 │                            ┌─────────────────┘                      │
 │                            ▼                                        │
 │              ┌──────────────────────────────┐                       │
 │              │  MCPClient (stdio JSON-RPC) │                       │
-│              │  filesystem server @ skills/ │                       │
+│              │  filesystem + external MCP   │                       │
 │              └──────────────────────────────┘                       │
 └─────────────────────────────────────────────────────────────────────┘
                              │
@@ -68,13 +69,13 @@ agent-core/
 │   ├── services/        # model_client (multi-provider), memory,
 │   │                    # vector_store (chromadb), embeddings, mcp_client,
 │   │                    # context_manager, skill_loader
-│   ├── tools/           # terminal, screen, GUI, mcp_tool (bridge)
+│   ├── tools/           # guarded terminal, external CLI, skills, MCP, screen
 │   ├── main.py          # FastAPI entry + startup/shutdown hooks
 │   ├── config.py        # Settings (env-driven, all providers, absolute paths)
 │   ├── schemas.py       # Pydantic models
 │   └── orchestrator.py  # MultiAgentOrchestrator + bootstrap()
 ├── eval/                # 31-case intent routing eval + run script
-├── tests/               # 66 unit tests (pytest, no network)
+├── tests/               # 83 unit tests (pytest, no network)
 ├── skills/              # local skill definitions (code-helper, english-tutor, etc.)
 ├── memory/              # session memory + chromadb semantic memory
 ├── artifacts/           # screenshots dir (served as /artifacts/)
@@ -232,6 +233,38 @@ MODELSCOPE_MODEL=Qwen/Qwen3-VL-8B-Instruct
 - `MCPServerProcess` 生命周期管理（start / list_tools / call_tool / stop）
 - `ToolRegistry.load_mcp_tools()` 在 startup 时发现并注册所有 MCP 工具
 - `MCPBridgeTool` 将远程工具适配为本地 `Tool` 接口，LLM 无感调用
+- 默认 filesystem MCP 只暴露 `skills/` 目录；额外 MCP 可通过 `MCP_SERVERS_JSON` 注册
+- MCP 桥接默认过滤写入、编辑、删除、移动、创建类工具，防止模型直接调用原始写 MCP
+- `mcp.servers` / `mcp.list_tools` 让 agent 能先检查外部 MCP 状态，再决定是否调用桥接工具
+
+```env
+ENABLE_FILESYSTEM_MCP=true
+MCP_SERVERS_JSON={"time":{"command":"npx","args":["-y","@modelcontextprotocol/server-time"]}}
+MCP_TOOL_BLOCKED_KEYWORDS=write,edit,delete,remove,move,create,rename
+```
+
+### 外部 CLI 与 Skill 扩展
+
+`app/tools/cli.py` 提供 `cli.run`：只允许运行 `EXTERNAL_CLI_ALLOWLIST` 中的可执行文件，使用 `subprocess.run([exe, *args])` 直接调用，不经过 shell 解析。适合检查 `git --version`、`node --version`、`npm run build`、`python -m pytest` 等外部 CLI。
+
+`app/tools/skills.py` 提供：
+- `skill.list`：列出已安装 prompt skills
+- `skill.create`：在受控 `SKILLS_DIR` 下创建 `skill.md`
+- `skill.install_from_url`：从 http/https 下载远程 markdown skill，只保存文本，不执行下载内容
+
+内置 `tool-operator` skill 会在用户提到 CLI / MCP / skill / 工具扩展时触发，指导 agent 先检查能力边界，再调用对应工具。
+
+### 执行安全边界
+
+`terminal.run` 默认运行在项目工作区内，超出 `COMMAND_WORKSPACE_ROOT` 的 `cwd` 会被拒绝。命令层会拦截删除、强制 Git 回滚/清理、系统磁盘/电源/权限修改、shell 重定向、包安装/卸载等高风险操作。
+
+`cli.run` 不接受路径或 shell 片段，只能调用 allowlist 中的外部命令，并复用同一套危险命令拦截规则。
+
+`skill.create` / `skill.install_from_url` 只能写入 `SKILLS_DIR` 下的 `skill.md`。远程 skill 被当作 prompt 文本，不会被当作代码执行。
+
+MCP 桥接默认不注册写入类工具。需要更高权限时应先缩小 MCP server 的目录范围，再显式调整 `MCP_TOOL_DENYLIST` / `MCP_TOOL_BLOCKED_KEYWORDS`。
+
+桌面 GUI 自动化默认不注册到工具列表。只有显式设置 `ENABLE_GUI_AUTOMATION=true` 后，模型才可能调用 `gui.act` 进行鼠标和键盘操作。
 
 ### Intent 路由 Eval
 `eval/run_intent_eval.py`：离线评测 RouterAgent 本地分类器，31 条测试集，**准确率 100%**：
@@ -290,6 +323,7 @@ skills/
   code-helper/skill.md         # 触发词: 代码/bug/实现/修复…
   english-tutor/skill.md        # 触发词: 翻译/英语/词汇/口语…
   github-review/skill.md        # 触发词: review/diff/PR/审查…
+  tool-operator/skill.md        # 触发词: cli/mcp/skill/工具…
 ```
 
 **目录格式**（`skill.md`）：
@@ -311,14 +345,14 @@ triggers:
 当用户询问代码时…
 ```
 
-**注入机制**：`ContextManager.build_prompt_context` 在构建 prompt 时，先用用户消息匹配 skill triggers，命中的 skill prompt 片段被 prepend 到 system prompt 里，agent 无需额外工具调用即可获得领域特定指导。
+**注入机制**：`ContextManager.build_prompt_context` 在构建 prompt 时，先 reload skills，再用用户消息匹配 skill triggers，命中的 skill prompt 片段被 prepend 到 system prompt 里，agent 无需额外工具调用即可获得领域特定指导。
 
 ### 工程指标
 
 | 指标 | 数值 |
 | --- | --- |
-| Python 代码行数（不含 venv） | ~1700 |
-| pytest 测试用例 | 66 |
+| Python 代码行数（不含 venv） | ~2000 |
+| pytest 测试用例 | 83 |
 | Intent 路由准确率 | 100% (31/31) |
 | 协作评测 | 100% (15/15) |
 | CI 覆盖 | ruff lint + pytest + intent eval + collab eval |

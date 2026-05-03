@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from app.agents.companion import CompanionAgent
@@ -35,8 +36,8 @@ class MultiAgentOrchestrator:
         self.context = ContextManager(self.memory, self.skills)
         self.router = RouterAgent()
         self.planner = PlannerAgent()
-        self.registry = ToolRegistry()
         self.mcp = MCPClient()
+        self.registry = ToolRegistry(self.mcp)
         self.strategy = CompanionStrategy()
         self.agents = {
             "companion-agent": CompanionAgent(),
@@ -44,15 +45,44 @@ class MultiAgentOrchestrator:
             "terminal-agent": TerminalAgent(),
         }
 
+        self._register_mcp_servers()
+
+    def _register_mcp_servers(self) -> None:
         # Expose the local skills directory via the official MCP filesystem
         # server. On startup we try to discover its tools and surface them
         # through the regular ToolRegistry so the LLM can invoke them like
         # any other function.
-        self.mcp.register_server(
-            "filesystem",
-            "npx",
-            ["-y", "@modelcontextprotocol/server-filesystem", str(settings.skills_dir.resolve())],
-        )
+        if settings.enable_filesystem_mcp:
+            self.mcp.register_server(
+                "filesystem",
+                "npx",
+                [
+                    "-y",
+                    "-p",
+                    "ajv@8",
+                    "-p",
+                    "@modelcontextprotocol/server-filesystem",
+                    "mcp-server-filesystem",
+                    str(settings.skills_dir.resolve()),
+                ],
+            )
+
+        if not settings.mcp_servers_json.strip():
+            return
+        try:
+            raw_servers = json.loads(settings.mcp_servers_json)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(raw_servers, dict):
+            return
+        for name, config in raw_servers.items():
+            if not isinstance(config, dict):
+                continue
+            command = config.get("command")
+            args = config.get("args") or []
+            if not command or not isinstance(args, list):
+                continue
+            self.mcp.register_server(str(name), str(command), [str(arg) for arg in args])
 
     async def bootstrap(self) -> None:
         """One-time async initialization (MCP discovery)."""
@@ -92,11 +122,17 @@ class MultiAgentOrchestrator:
     def _build_task(self, request: ChatRequest, delegated: str, reply: str, tool_calls: list[ToolCallRecord]) -> dict:
         steps = []
         for index, tool_call in enumerate(tool_calls, start=1):
+            lowered_result = tool_call.result.lower()
+            failed = (
+                "failed:" in lowered_result
+                or "blocked unsafe command" in lowered_result
+                or ("exit=" in lowered_result and "exit=0" not in lowered_result)
+            )
             steps.append(
                 {
                     "id": f"step-{index}",
                     "title": tool_call.name,
-                    "status": "completed" if "failed:" not in tool_call.result.lower() else "failed",
+                    "status": "failed" if failed else "completed",
                     "detail": tool_call.result,
                 }
             )
@@ -112,7 +148,7 @@ class MultiAgentOrchestrator:
         return {
             "title": request.message[:72],
             "owner": delegated,
-            "status": "completed",
+            "status": "failed" if any(step["status"] == "failed" for step in steps) else "completed",
             "reply_preview": reply[:120],
             "step_count": len(steps),
             "steps": steps,

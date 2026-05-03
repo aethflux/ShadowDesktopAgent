@@ -45,8 +45,9 @@ class RouterAgent:
                 keywords=(
                     "命令行", "终端", "shell", "powershell", "cmd", "terminal", "运行命令",
                     "执行命令", "npm", "pip", "git", "pytest", "uvicorn", "ls", "dir", "cd ",
+                    "cli", "外部cli", "外部命令",
                 ),
-                tools=("terminal.run", "terminal.reset"),
+                tools=("terminal.run", "terminal.reset", "cli.run"),
             ),
             IntentRule(
                 intent="coding",
@@ -56,8 +57,9 @@ class RouterAgent:
                     "意图", "路由", "匹配", "分类", "bug", "报错", "重构", "测试", "文件", "函数",
                     "class", "function", "typescript", "python", "build", "compile",
                     "implement", "fix", "refactor", "test",
+                    "skill", "skills", "mcp", "tool", "tools", "外部skill", "外部mcp", "工具",
                 ),
-                tools=("terminal.run",),
+                tools=("terminal.run", "cli.run", "skill.list", "mcp.servers"),
             ),
             IntentRule(
                 intent="voice",

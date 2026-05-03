@@ -1,4 +1,12 @@
-﻿const BACKEND_URL = "http://127.0.0.1:8787";
+const BACKEND_URL = "http://127.0.0.1:8787";
+const defaultSettings = {
+  avatar: "streamer",
+  voice: "warm-girl",
+  watching: false,
+  voiceEnabled: true,
+  observeSpeechEnabled: true
+};
+
 const chatLog = document.getElementById("chatLog");
 const capabilitiesEl = document.getElementById("capabilities");
 const composer = document.getElementById("composer");
@@ -9,6 +17,24 @@ const taskContent = document.getElementById("taskContent");
 const taskStatus = document.getElementById("taskStatus");
 const timelineEl = document.getElementById("timeline");
 const artifactsEl = document.getElementById("artifacts");
+const avatarSelect = document.getElementById("avatarSelect");
+const voiceSelect = document.getElementById("voiceSelect");
+const watchingToggle = document.getElementById("watchingToggle");
+const voiceEnabledToggle = document.getElementById("voiceEnabledToggle");
+const observeSpeechToggle = document.getElementById("observeSpeechToggle");
+const tabs = Array.from(document.querySelectorAll("[data-tab]"));
+const pages = Array.from(document.querySelectorAll("[data-page]"));
+
+let desktopSettings = { ...defaultSettings };
+
+function switchTab(tabName) {
+  tabs.forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.tab === tabName);
+  });
+  pages.forEach((page) => {
+    page.classList.toggle("active", page.dataset.page === tabName);
+  });
+}
 
 function appendMessage(role, text, meta = "") {
   const div = document.createElement("div");
@@ -35,7 +61,7 @@ async function fileToDataUrl(file) {
 
 function summarizeTools(toolCalls) {
   if (!toolCalls.length) return "none";
-  return toolCalls.map((item) => `${item.name}`).join(", ");
+  return toolCalls.map((item) => item.name).join(", ");
 }
 
 function renderTask(task) {
@@ -94,19 +120,52 @@ function renderArtifacts(artifacts) {
   }).join("");
 }
 
+function applySettings(next) {
+  desktopSettings = { ...desktopSettings, ...next };
+  if (!["streamer", "swordswoman", "cyber"].includes(desktopSettings.avatar)) {
+    desktopSettings.avatar = "streamer";
+  }
+  avatarSelect.value = desktopSettings.avatar;
+  voiceSelect.value = desktopSettings.voice;
+  watchingToggle.checked = !!desktopSettings.watching;
+  voiceEnabledToggle.checked = !!desktopSettings.voiceEnabled;
+  observeSpeechToggle.checked = !!desktopSettings.observeSpeechEnabled;
+}
+
+async function updateSettings(patch) {
+  const settings = await window.bishoujo.updateSettings(patch);
+  applySettings(settings);
+}
+
 async function loadCapabilities() {
   const capabilities = await window.bishoujo.capabilities();
   capabilitiesEl.innerHTML = `
-    <div class="status-group"><span class="status-label">Runtime</span><span class="chip">${capabilities.provider}</span><span class="chip">${capabilities.model}</span><span class="chip">vision:${capabilities.vision_provider}</span><span class="chip">embed:${capabilities.embedding_provider}</span></div>
-    <div class="status-group"><span class="status-label">Features</span>
+    <div class="status-group">
+      <span class="status-label">Runtime</span>
+      <span class="chip">${capabilities.provider}</span>
+      <span class="chip">${capabilities.model}</span>
+      <span class="chip">vision:${capabilities.vision_provider}</span>
+      <span class="chip">embed:${capabilities.embedding_provider}</span>
+    </div>
+    <div class="status-group">
+      <span class="status-label">Features</span>
       <span class="chip">vision:${capabilities.features.vision ? "on" : "off"}</span>
       <span class="chip">browser-speech:${capabilities.features.browser_speech ? "on" : "off"}</span>
       <span class="chip">tts:${capabilities.features.tts_engine || "browser-speech"}</span>
       <span class="chip">memory:${capabilities.features.semantic_memory ? "on" : "off"}</span>
     </div>
-    <div class="status-group"><span class="status-label">Tools</span>${capabilities.tools.slice(0, 8).map((item) => `<span class="chip">${item}</span>`).join("")}</div>
+    <div class="status-group">
+      <span class="status-label">Tools</span>
+      ${capabilities.tools.slice(0, 10).map((item) => `<span class="chip">${item}</span>`).join("")}
+    </div>
   `;
 }
+
+tabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    switchTab(tab.dataset.tab || "chat");
+  });
+});
 
 composer.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -143,7 +202,6 @@ composer.addEventListener("submit", async (event) => {
     renderTask(response.task || {});
     renderTimeline(response.trace.tool_calls || []);
     renderArtifacts(response.artifacts || []);
-
     messageInput.value = "";
     imageInput.value = "";
   } catch (error) {
@@ -174,6 +232,48 @@ voiceBtn.addEventListener("click", () => {
   }
 });
 
+watchingToggle.addEventListener("change", () => {
+  updateSettings({ watching: watchingToggle.checked }).catch((error) => {
+    appendMessage("assistant", `持续陪伴切换失败：${error.message}`);
+  });
+});
+
+voiceEnabledToggle.addEventListener("change", () => {
+  updateSettings({ voiceEnabled: voiceEnabledToggle.checked }).catch((error) => {
+    appendMessage("assistant", `语音开关切换失败：${error.message}`);
+  });
+});
+
+observeSpeechToggle.addEventListener("change", () => {
+  updateSettings({ observeSpeechEnabled: observeSpeechToggle.checked }).catch((error) => {
+    appendMessage("assistant", `观察发声切换失败：${error.message}`);
+  });
+});
+
+avatarSelect.addEventListener("change", () => {
+  updateSettings({ avatar: avatarSelect.value }).catch((error) => {
+    appendMessage("assistant", `形象切换失败：${error.message}`);
+  });
+});
+
+voiceSelect.addEventListener("change", () => {
+  updateSettings({ voice: voiceSelect.value }).catch((error) => {
+    appendMessage("assistant", `音色切换失败：${error.message}`);
+  });
+});
+
+window.bishoujo.onSettingsChanged((settings) => {
+  applySettings(settings);
+});
+
 loadCapabilities().catch((error) => {
   appendMessage("assistant", `能力加载失败：${error.message}`);
+});
+
+window.bishoujo.settings().then((settings) => {
+  applySettings(settings);
+  switchTab("chat");
+}).catch((error) => {
+  appendMessage("assistant", `设置加载失败：${error.message}`);
+  applySettings(defaultSettings);
 });

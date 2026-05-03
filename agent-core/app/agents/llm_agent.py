@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
 
 import json
+from json import JSONDecodeError
+from pathlib import Path
 from typing import Any
 
 from app.schemas import ChatAttachment, ToolCallRecord
@@ -26,6 +28,7 @@ class LLMAgent:
                 "type": "text",
                 "text": (
                     f"Memory summary: {memory_summary}\n"
+                    f"{self._runtime_context()}\n"
                     f"User request: {message}"
                 ),
             }
@@ -68,7 +71,7 @@ class LLMAgent:
         tool_calls: list[ToolCallRecord] = []
 
         try:
-            for _ in range(4):
+            for _ in range(6):
                 response = await self.model_client.chat(messages, tools=registry.specs())
                 assistant_message = self.model_client.extract_message(response)
                 raw_tool_calls = assistant_message.get("tool_calls") or []
@@ -84,7 +87,21 @@ class LLMAgent:
                     for tool_call in raw_tool_calls:
                         name = tool_call["function"]["name"]
                         raw_args = tool_call["function"].get("arguments") or "{}"
-                        args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                        try:
+                            args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                        except JSONDecodeError as exc:
+                            args = {}
+                            result = f"Tool {name} failed: invalid JSON arguments: {exc}"
+                            tool_calls.append(ToolCallRecord(name=name, args=args, result=result))
+                            messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tool_call["id"],
+                                    "name": name,
+                                    "content": result,
+                                }
+                            )
+                            continue
                         if name.startswith("terminal."):
                             args.setdefault("session_id", session_id)
                         try:
@@ -114,4 +131,26 @@ class LLMAgent:
                 return f"我完成了部分操作，但模型服务在生成最终回复时出错：{exc}", tool_calls
             return f"模型服务暂时不可用，我先保留任务上下文。错误信息：{exc}", tool_calls
 
+        if tool_calls:
+            return self._summarize_tool_fallback(tool_calls), tool_calls
         return "我已经完成分析，但当前模型没有给出最终自然语言回复。", tool_calls
+
+    @staticmethod
+    def _summarize_tool_fallback(tool_calls: list[ToolCallRecord]) -> str:
+        lines = ["工具调用已结束，下面是执行结果摘要："]
+        for index, tool_call in enumerate(tool_calls[-4:], start=1):
+            detail = " ".join(tool_call.result.split())
+            lines.append(f"{index}. {tool_call.name}: {detail[:260]}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _runtime_context() -> str:
+        cwd = Path.cwd()
+        project_root = cwd.parent if cwd.name == "agent-core" else cwd
+        desktop_dir = project_root / "desktop"
+        return (
+            f"Current backend working directory: {cwd}\n"
+            f"Project root: {project_root}\n"
+            f"Agent core directory: {project_root / 'agent-core'}\n"
+            f"Desktop app directory: {desktop_dir if desktop_dir.exists() else 'not found'}"
+        )

@@ -111,6 +111,13 @@ class Settings(BaseSettings):
     skills_dir: Path = Field(default=_AGENT_CORE_ROOT / "skills")
     screenshots_dir: Path = Field(default=_AGENT_CORE_ROOT / "artifacts" / "screenshots")
     command_timeout_seconds: int = 20
+    command_workspace_root: Path = Field(default=_AGENT_CORE_ROOT.parent)
+    enable_gui_automation: bool = False
+    external_cli_allowlist: str = "git,node,npm,npx,python,python3,py,pwsh,powershell"
+    enable_filesystem_mcp: bool = True
+    mcp_servers_json: str = ""
+    mcp_tool_denylist: str = "write_file,edit_file,create_directory,move_file"
+    mcp_tool_blocked_keywords: str = "write,edit,delete,remove,move,create,rename"
 
     model_config = SettingsConfigDict(
         env_file=".env",

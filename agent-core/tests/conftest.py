@@ -17,6 +17,9 @@ os.environ.setdefault("CHROMA_DIR", str(_TMP / "chroma"))
 # Force offline provider defaults so nothing in the test suite hits the network.
 os.environ.setdefault("PROVIDER", "vllm")
 os.environ.setdefault("EMBEDDING_PROVIDER", "hash")
+os.environ.setdefault("EXTERNAL_CLI_ALLOWLIST", "git,node,npm,npx,python,python3,py,pwsh,powershell")
+os.environ.setdefault("MCP_TOOL_DENYLIST", "write_file,edit_file,create_directory,move_file")
+os.environ.setdefault("MCP_TOOL_BLOCKED_KEYWORDS", "write,edit,delete,remove,move,create,rename")
 
 
 @pytest.fixture

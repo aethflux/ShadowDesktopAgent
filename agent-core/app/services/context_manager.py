@@ -33,6 +33,7 @@ class ContextManager:
         # Skill injection: match the user's message against skill triggers
         # and prepend the matched skill prompts so the agent can draw on
         # domain-specific guidance without needing a separate tool call.
+        self.skill_loader.reload()
         matched_skills = self.skill_loader.match(user_message)
         skill_block = (
             "\n\n".join(f"[Skill: {s.name}]\n{s.prompt}" for s in matched_skills)

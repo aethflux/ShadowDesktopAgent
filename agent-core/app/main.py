@@ -85,6 +85,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 @app.get("/api/capabilities")
 async def capabilities() -> dict:
     desktop_agent = orchestrator.agents["desktop-agent"]
+    orchestrator.skills.reload()
     return {
         "tools": orchestrator.registry.names(),
         "mcp_servers": orchestrator.mcp.list_servers(),

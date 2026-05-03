@@ -12,47 +12,36 @@
 const petShell = document.getElementById("petShell");
 const bubble = document.getElementById("petBubble");
 const watchDot = document.getElementById("watchDot");
-const miniChat = document.getElementById("miniChat");
-const miniChatInput = document.getElementById("miniChatInput");
-const miniChatSend = document.getElementById("miniChatSend");
-const avatarSelect = document.getElementById("avatarSelect");
-const voiceSelect = document.getElementById("voiceSelect");
 
 const BACKEND_URL = "http://127.0.0.1:8787";
 const WATCH_SESSION_ID = "digital-twin-session";
-const CHAT_SESSION_ID = "desktop-session";
 const OBSERVE_INTERVAL_MS = 45_000;
 const AVATAR_CLASSES = ["avatar-streamer", "avatar-swordswoman", "avatar-cyber"];
-const AVATAR_STORAGE_KEY = "hoshino.avatar";
-const VOICE_STORAGE_KEY = "hoshino.voice";
-
-let selectedAvatar = localStorage.getItem(AVATAR_STORAGE_KEY) || "streamer";
-let selectedVoice = localStorage.getItem(VOICE_STORAGE_KEY) || "warm-girl";
+const defaultSettings = {
+  avatar: "streamer",
+  voice: "warm-girl",
+  watching: false,
+  voiceEnabled: true,
+  observeSpeechEnabled: true
+};
+let desktopSettings = { ...defaultSettings };
 
 function applyAvatar(value) {
-  selectedAvatar = ["streamer", "swordswoman", "cyber"].includes(value) ? value : "streamer";
+  const selectedAvatar = ["streamer", "swordswoman", "cyber"].includes(value) ? value : "streamer";
   petShell?.classList.remove(...AVATAR_CLASSES);
   petShell?.classList.add(`avatar-${selectedAvatar}`);
-  if (avatarSelect) avatarSelect.value = selectedAvatar;
-  localStorage.setItem(AVATAR_STORAGE_KEY, selectedAvatar);
 }
 
 function applyVoice(value) {
-  selectedVoice = ["warm-girl", "sweet-lady", "gentleman", "storyteller"].includes(value) ? value : "warm-girl";
-  if (voiceSelect) voiceSelect.value = selectedVoice;
-  localStorage.setItem(VOICE_STORAGE_KEY, selectedVoice);
+  desktopSettings.voice = ["warm-girl", "sweet-lady", "gentleman", "storyteller"].includes(value) ? value : "warm-girl";
 }
 
-applyAvatar(selectedAvatar);
-applyVoice(selectedVoice);
-
-avatarSelect?.addEventListener("change", () => {
-  applyAvatar(avatarSelect.value);
-});
-
-voiceSelect?.addEventListener("change", () => {
-  applyVoice(voiceSelect.value);
-});
+function applySettings(next) {
+  desktopSettings = { ...desktopSettings, ...next };
+  applyVoice(desktopSettings.voice);
+  applyAvatar(desktopSettings.avatar);
+  setWatching(!!desktopSettings.watching, false);
+}
 
 // ---------------------------------------------------------------------------
 // Engagement tracker — feeds idle / keypress / mouse data to the backend
@@ -251,7 +240,8 @@ function _playAudioUrl(url, fallbackText) {
 
 async function say(text) {
   if (!text) return;
-  const ttsResp = await window.bishoujo.tts({ text, voice: selectedVoice });
+  if (!desktopSettings.voiceEnabled) return;
+  const ttsResp = await window.bishoujo.tts({ text, voice: desktopSettings.voice });
   console.log("[pet] tts response", ttsResp);
   if (ttsResp.audio_url) {
     _playAudioUrl(ttsResp.audio_url, text);
@@ -284,10 +274,13 @@ async function observe(trigger = "interval") {
     });
 
     const text = response.reply || "我在旁边陪着你。";
-    const shouldSpeak = trigger === "manual" || response.should_speak || response.significance === "high";
+    const shouldSpeak = desktopSettings.observeSpeechEnabled
+      && (trigger === "manual" || response.should_speak || response.significance === "high");
     if (shouldSpeak && text) {
       showBubble(text.slice(0, 86));
       await say(text);
+    } else if (text) {
+      showBubble(text.slice(0, 86));
     }
   } catch (error) {
     showBubble(`观察失败：${error && error.message ? error.message : String(error)}`);
@@ -296,43 +289,16 @@ async function observe(trigger = "interval") {
   }
 }
 
-miniChat?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const text = miniChatInput.value.trim();
-  if (!text) return;
-
-  miniChatInput.value = "";
-  miniChatInput.disabled = true;
-  miniChatSend.disabled = true;
-  showBubble("我在想...");
-
-  try {
-    const response = await window.bishoujo.chat({
-      message: text,
-      session_id: CHAT_SESSION_ID,
-      attachments: []
-    });
-    const reply = response.reply || "我在。";
-    showBubble(reply.slice(0, 86));
-    await say(reply);
-  } catch (error) {
-    const message = error && error.message ? error.message : String(error);
-    showBubble(`请求失败：${message}`, true);
-  } finally {
-    miniChatInput.disabled = false;
-    miniChatSend.disabled = false;
-    miniChatInput.focus();
-  }
-});
-
 // ---------------------------------------------------------------------------
 // Companion mode
 // ---------------------------------------------------------------------------
 
-function setWatching(next) {
+function setWatching(next, notifyMain = true) {
   watching = next;
   watchDot?.classList.toggle("active", watching);
-  window.bishoujo.setWatching(watching);
+  if (notifyMain) {
+    window.bishoujo.setWatching(watching);
+  }
   if (observeTimer) {
     clearInterval(observeTimer);
     observeTimer = null;
@@ -347,7 +313,19 @@ function setWatching(next) {
 }
 
 window.bishoujo.onWatchingChanged((next) => {
-  if (next !== watching) setWatching(next);
+  if (next !== watching) setWatching(next, false);
+});
+
+window.bishoujo.onSettingsChanged((next) => {
+  applySettings(next);
+});
+
+window.bishoujo.onAvatarChanged((avatar) => {
+  applySettings({ avatar });
+});
+
+window.bishoujo.onVoiceChanged((voice) => {
+  applySettings({ voice });
 });
 
 petShell?.addEventListener("contextmenu", (event) => {
@@ -358,4 +336,11 @@ petShell?.addEventListener("contextmenu", (event) => {
 petShell?.addEventListener("dblclick", (event) => {
   event.preventDefault();
   setWatching(!watching);
+});
+
+window.bishoujo.settings().then((settings) => {
+  applySettings(settings);
+}).catch((error) => {
+  console.warn("[pet] failed to load settings", error);
+  applySettings(defaultSettings);
 });

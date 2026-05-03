@@ -84,7 +84,12 @@ class MCPServerProcess:
             while True:
                 line = await self.proc.stdout.readline()
                 if not line:
-                    raise RuntimeError(f"MCP server '{self.name}' closed unexpectedly")
+                    stderr = ""
+                    if self.proc.stderr is not None:
+                        stderr_bytes = await self.proc.stderr.read()
+                        stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
+                    detail = f": {stderr[:1000]}" if stderr else ""
+                    raise RuntimeError(f"MCP server '{self.name}' closed unexpectedly{detail}")
                 try:
                     message = json.loads(line.decode("utf-8"))
                 except json.JSONDecodeError:
@@ -130,6 +135,12 @@ class MCPServerProcess:
         if self.proc is None:
             return
         try:
+            if self.proc.stdin is not None:
+                self.proc.stdin.close()
+                try:
+                    await self.proc.stdin.wait_closed()
+                except Exception:
+                    pass
             self.proc.terminate()
             await asyncio.wait_for(self.proc.wait(), timeout=3)
         except Exception:

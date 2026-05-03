@@ -126,6 +126,12 @@ class SkillLoader:
         """Return the ``prompt`` fragments of all matched skills, in load order."""
         return [s.prompt for s in self.match(message) if s.prompt]
 
+    def reload(self) -> None:
+        """Clear the in-memory cache so newly installed skills are visible."""
+        self._loaded = False
+        self._skills.clear()
+        self._trigger_index.clear()
+
     # ---- Internal -------------------------------------------------------- #
 
     def _ensure_loaded(self) -> None:
