@@ -35,6 +35,10 @@ class ToolCallRecord(BaseModel):
     name: str
     args: dict[str, Any] = Field(default_factory=dict)
     result: str
+    # ``success`` is the canonical signal for whether the tool succeeded.
+    # Defaults to True so existing call sites that don't set it (e.g. screen
+    # capture) keep their pre-existing semantics.
+    success: bool = True
 
 
 class AgentTrace(BaseModel):

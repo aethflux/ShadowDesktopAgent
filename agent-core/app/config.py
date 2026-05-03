@@ -52,6 +52,24 @@ class Settings(BaseSettings):
     # Prompt caching (Anthropic explicit; OpenAI auto-cached when prefixes are stable).
     enable_prompt_cache: bool = True
 
+    # ---- Reliability knobs ----
+    # Max retries (per HTTP call) on transient failures (5xx, 429, network).
+    # Set to 1 to disable retry behaviour entirely.
+    model_max_retries: int = 3
+    # Initial backoff in seconds; the actual delay grows exponentially.
+    model_retry_backoff_seconds: float = 0.4
+    # Anthropic max_tokens for chat completions.
+    anthropic_max_tokens: int = 2048
+    # Maximum age (in hours) of generated TTS audio files before
+    # the server cleans them up at startup. Set to 0 to keep forever.
+    tts_audio_retention_hours: int = 24
+
+    # ---- Rate limiting ----
+    # Token-bucket per-IP limiter. ``capacity`` tokens fill at
+    # ``refill_per_second``. Disable by setting capacity to 0.
+    rate_limit_capacity: int = 30
+    rate_limit_refill_per_second: float = 0.5
+
     # ---- Embedding provider ----
     # "openai" = OpenAI embedding API, "modelscope" = ModelScope API-Inference,
     # "hash" = local zero-dep fallback.
@@ -118,51 +136,42 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    def resolved_model(self, provider: Provider | None = None) -> str:
-        selected = provider or self.provider
-        if selected == "openai" and self.openai_model:
-            return self.openai_model
-        if selected == "anthropic" and self.anthropic_model:
-            return self.anthropic_model
-        if selected == "vllm" and self.vllm_model:
-            return self.vllm_model
-        if selected == "minimax" and self.minimax_model:
-            return self.minimax_model
-        if selected == "modelscope" and self.modelscope_model:
-            return self.modelscope_model
-        return self.model
-
     @staticmethod
     def _clean_base(url: str) -> str:
         return url.rstrip("/")
 
+    def resolved_model(self, provider: Provider | None = None) -> str:
+        selected = provider or self.provider
+        per_provider = {
+            "openai": self.openai_model,
+            "anthropic": self.anthropic_model,
+            "vllm": self.vllm_model,
+            "minimax": self.minimax_model,
+            "modelscope": self.modelscope_model,
+        }
+        return per_provider.get(selected) or self.model
+
     def resolved_api_key(self, provider: Provider | None = None) -> str:
         selected = provider or self.provider
-        if selected == "openai":
-            return self.openai_oauth_token or self.openai_api_key or self.api_key
-        if selected == "anthropic":
-            return self.anthropic_api_key or self.api_key
-        if selected == "vllm":
-            return self.vllm_api_key or self.api_key
-        if selected == "minimax":
-            return self.minimax_api_key or self.api_key
-        if selected == "modelscope":
-            return self.modelscope_api_key or self.api_key
-        return self.api_key
+        per_provider = {
+            "openai": self.openai_oauth_token or self.openai_api_key,
+            "anthropic": self.anthropic_api_key,
+            "vllm": self.vllm_api_key,
+            "minimax": self.minimax_api_key,
+            "modelscope": self.modelscope_api_key,
+        }
+        return per_provider.get(selected) or self.api_key
 
     def resolved_api_base(self, provider: Provider | None = None) -> str:
         selected = provider or self.provider
-        if selected == "openai":
-            return self._clean_base(self.openai_api_base)
-        if selected == "anthropic":
-            return self._clean_base(self.anthropic_api_base)
-        if selected == "vllm":
-            return self._clean_base(self.vllm_api_base or self.api_base)
-        if selected == "minimax":
-            return self._clean_base(self.minimax_api_base)
-        if selected == "modelscope":
-            return self._clean_base(self.modelscope_api_base)
-        return self._clean_base(self.api_base)
+        per_provider = {
+            "openai": self.openai_api_base,
+            "anthropic": self.anthropic_api_base,
+            "vllm": self.vllm_api_base or self.api_base,
+            "minimax": self.minimax_api_base,
+            "modelscope": self.modelscope_api_base,
+        }
+        return self._clean_base(per_provider.get(selected) or self.api_base)
 
     def resolved_embedding_api_key(self) -> str:
         if self.embedding_provider == "openai":

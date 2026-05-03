@@ -84,14 +84,24 @@ class LLMAgent:
                     for tool_call in raw_tool_calls:
                         name = tool_call["function"]["name"]
                         raw_args = tool_call["function"].get("arguments") or "{}"
-                        args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                        try:
+                            args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                        except json.JSONDecodeError:
+                            args = {}
                         if name.startswith("terminal."):
                             args.setdefault("session_id", session_id)
+                        success = True
                         try:
                             result = await registry.arun(name, args)
+                            # Registry returns a sentinel for unknown tools; surface that as failure.
+                            if not registry.has(name):
+                                success = False
                         except Exception as exc:
                             result = f"Tool {name} failed: {exc}"
-                        tool_calls.append(ToolCallRecord(name=name, args=args, result=result))
+                            success = False
+                        tool_calls.append(
+                            ToolCallRecord(name=name, args=args, result=result, success=success)
+                        )
                         messages.append(
                             {
                                 "role": "tool",

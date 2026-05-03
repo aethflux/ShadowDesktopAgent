@@ -3,10 +3,12 @@
  *
  * Responsibilities:
  *   - Drag-and-drop window movement
- *   - Right-click / double-click menu
+ *   - Right-click / double-click menu, mini chat
  *   - Continuous companion mode (periodic screen observation)
  *   - Cloud TTS playback with browser speech fallback
- *   - Engagement telemetry → passed to backend on every observe() call
+ *   - Engagement telemetry → backend on every observe()
+ *   - Agent state machine that drives expressions/animations:
+ *       idle | thinking | working | talking | watching | listening | error | happy
  */
 
 const petShell = document.getElementById("petShell");
@@ -46,16 +48,62 @@ function applyVoice(value) {
 applyAvatar(selectedAvatar);
 applyVoice(selectedVoice);
 
-avatarSelect?.addEventListener("change", () => {
-  applyAvatar(avatarSelect.value);
-});
-
-voiceSelect?.addEventListener("change", () => {
-  applyVoice(voiceSelect.value);
-});
+avatarSelect?.addEventListener("change", () => applyAvatar(avatarSelect.value));
+voiceSelect?.addEventListener("change", () => applyVoice(voiceSelect.value));
 
 // ---------------------------------------------------------------------------
-// Engagement tracker — feeds idle / keypress / mouse data to the backend
+// Agent state machine
+// ---------------------------------------------------------------------------
+//
+// `data-state` on the pet shell drives all CSS expression rules. We layer
+// states on top of the long-lived "watching" mode: when a transient state
+// (thinking/working/talking/error/happy) finishes, we fall back to either
+// "watching" or "idle" depending on whether continuous companion mode is on.
+
+const STATE = {
+  IDLE: "idle",
+  THINKING: "thinking",
+  WORKING: "working",
+  TALKING: "talking",
+  WATCHING: "watching",
+  LISTENING: "listening",
+  ERROR: "error",
+  HAPPY: "happy",
+};
+
+let watching = false;
+let stateRevertTimer = null;
+let stickyState = null;     // when set, no auto-revert until cleared
+
+function baselineState() {
+  return watching ? STATE.WATCHING : STATE.IDLE;
+}
+
+function setState(next, { sticky = false, revertAfter = null } = {}) {
+  if (stateRevertTimer) {
+    clearTimeout(stateRevertTimer);
+    stateRevertTimer = null;
+  }
+  petShell.dataset.state = next;
+  stickyState = sticky ? next : null;
+  if (!sticky && next !== STATE.IDLE && next !== STATE.WATCHING) {
+    const ms = revertAfter ?? 3500;
+    stateRevertTimer = setTimeout(() => {
+      // If a sticky state took over while we waited, respect that.
+      if (stickyState) return;
+      petShell.dataset.state = baselineState();
+    }, ms);
+  }
+}
+
+function clearStickyState() {
+  stickyState = null;
+  if (stateRevertTimer) clearTimeout(stateRevertTimer);
+  petShell.dataset.state = baselineState();
+}
+
+// ---------------------------------------------------------------------------
+// Engagement tracker
 // ---------------------------------------------------------------------------
 
 const _eng = {
@@ -90,7 +138,7 @@ function _engagementState() {
 }
 
 // ---------------------------------------------------------------------------
-// Pet movement
+// Pet movement (drag from anywhere except .mini-chat)
 // ---------------------------------------------------------------------------
 
 let dragStart = null;
@@ -164,6 +212,11 @@ function showBubble(text, sticky = false) {
 
 function setTalking(active) {
   petShell?.classList.toggle("talking", active);
+  if (active) {
+    setState(STATE.TALKING, { sticky: true });
+  } else if (stickyState === STATE.TALKING) {
+    clearStickyState();
+  }
 }
 
 let currentAudio = null;
@@ -236,7 +289,7 @@ function _playAudioUrl(url, fallbackText) {
     setTalking(false);
     console.warn("[pet] cloud audio failed, falling back to browser speech", {
       src,
-      error: audio.error ? audio.error.code : null
+      error: audio.error ? audio.error.code : null,
     });
     if (currentAudio === audio) currentAudio = null;
     speak(fallbackText);
@@ -264,7 +317,6 @@ async function say(text) {
 // Observation loop
 // ---------------------------------------------------------------------------
 
-let watching = false;
 let observing = false;
 let observeTimer = null;
 
@@ -272,6 +324,7 @@ async function observe(trigger = "interval") {
   if (observing) return;
   if (_isIdle() && trigger === "interval") return;
   observing = true;
+  // Watching is already sticky once enabled — no transient state change.
   try {
     const eng = _engagementState();
     const response = await window.bishoujo.observe({
@@ -290,6 +343,7 @@ async function observe(trigger = "interval") {
       await say(text);
     }
   } catch (error) {
+    setState(STATE.ERROR, { revertAfter: 2400 });
     showBubble(`观察失败：${error && error.message ? error.message : String(error)}`);
   } finally {
     observing = false;
@@ -304,18 +358,33 @@ miniChat?.addEventListener("submit", async (event) => {
   miniChatInput.value = "";
   miniChatInput.disabled = true;
   miniChatSend.disabled = true;
+
+  setState(STATE.THINKING, { sticky: true });
   showBubble("我在想...");
 
   try {
     const response = await window.bishoujo.chat({
       message: text,
       session_id: CHAT_SESSION_ID,
-      attachments: []
+      attachments: [],
     });
     const reply = response.reply || "我在。";
+
+    // If the agent invoked tools, briefly show the working sparkle state
+    // before transitioning to the spoken reply.
+    const usedTools = (response.trace?.tool_calls || []).length > 0;
+    if (usedTools) {
+      setState(STATE.WORKING, { sticky: true });
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    // Quick happy beat then talking.
+    setState(STATE.HAPPY, { sticky: true });
+    await new Promise((r) => setTimeout(r, 350));
+
     showBubble(reply.slice(0, 86));
-    await say(reply);
+    await say(reply); // setTalking inside say() will set TALKING sticky
   } catch (error) {
+    setState(STATE.ERROR, { revertAfter: 2800 });
     const message = error && error.message ? error.message : String(error);
     showBubble(`请求失败：${message}`, true);
   } finally {
@@ -338,10 +407,12 @@ function setWatching(next) {
     observeTimer = null;
   }
   if (watching) {
+    setState(STATE.WATCHING, { sticky: true });
     showBubble("持续陪伴已开启，我会像搭档一样偶尔看看屏幕。", true);
     observe("manual");
     observeTimer = setInterval(() => observe("interval"), OBSERVE_INTERVAL_MS);
   } else {
+    clearStickyState();
     showBubble("持续陪伴已暂停。");
   }
 }
@@ -359,3 +430,9 @@ petShell?.addEventListener("dblclick", (event) => {
   event.preventDefault();
   setWatching(!watching);
 });
+
+// ---------------------------------------------------------------------------
+// Idle entry — explicit so the pet starts in a known state
+// ---------------------------------------------------------------------------
+
+setState(STATE.IDLE);

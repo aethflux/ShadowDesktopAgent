@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.logging import get_logger
 from app.services.mcp_client import MCPClient
 from app.tools.base import Tool
 from app.tools.gui import GuiAutomationTool
 from app.tools.mcp_tool import MCPBridgeTool
 from app.tools.screen import ScreenReaderTool
 from app.tools.terminal import TerminalResetTool, TerminalTool
+
+logger = get_logger("tools.registry")
 
 
 class ToolRegistry:
@@ -41,12 +44,29 @@ class ToolRegistry:
     def register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
 
+    def has(self, name: str) -> bool:
+        return name in self._tools
+
     async def arun(self, name: str, args: dict[str, Any]) -> str:
-        return await self._tools[name].arun(**args)
+        tool = self._tools.get(name)
+        if tool is None:
+            available = ", ".join(sorted(self._tools.keys())) or "(none)"
+            return (
+                f"Tool '{name}' is not registered. "
+                f"Available tools: {available}."
+            )
+        return await tool.arun(**args)
 
     def run(self, name: str, args: dict[str, Any]) -> str:
         """Synchronous fallback for tools that don't need ``await``."""
-        return self._tools[name].run(**args)
+        tool = self._tools.get(name)
+        if tool is None:
+            available = ", ".join(sorted(self._tools.keys())) or "(none)"
+            return (
+                f"Tool '{name}' is not registered. "
+                f"Available tools: {available}."
+            )
+        return tool.run(**args)
 
     async def load_mcp_tools(self, mcp_client: MCPClient) -> int:
         """Discover tools from every registered MCP server and expose them.
@@ -60,7 +80,8 @@ class ToolRegistry:
             server_name = server_info["name"]
             try:
                 tools = await mcp_client.list_tools(server_name)
-            except Exception:
+            except Exception as exc:
+                logger.warning("Failed to list tools from MCP server '%s': %s", server_name, exc)
                 continue
             for tool in tools:
                 bridge = MCPBridgeTool(

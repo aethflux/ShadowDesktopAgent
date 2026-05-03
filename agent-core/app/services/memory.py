@@ -1,10 +1,32 @@
 import json
 import re
+from collections import deque
 from pathlib import Path
 
 from app.config import settings
 from app.schemas import MemoryItem, ObservationState, TerminalSessionState, UserProfile
 from app.services.vector_store import VectorStore
+
+
+def _tail_lines(path: Path, limit: int) -> list[str]:
+    """Return at most ``limit`` non-empty lines from the end of ``path``.
+
+    Streams the file line-by-line into a bounded deque so memory stays O(limit)
+    even when the JSONL log grows to many megabytes. Falls back to reading the
+    whole file only if streaming fails (very small files, encoding issues).
+    """
+    if limit <= 0 or not path.exists():
+        return []
+    try:
+        buffer: deque[str] = deque(maxlen=limit)
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                stripped = line.rstrip("\n")
+                if stripped:
+                    buffer.append(stripped)
+        return list(buffer)
+    except OSError:
+        return []
 
 
 class MemoryStore:
@@ -44,11 +66,15 @@ class MemoryStore:
         return [hit["text"] for hit in hits]
 
     def recent(self, session_id: str, limit: int = 12) -> list[MemoryItem]:
-        path = self._path(session_id)
-        if not path.exists():
-            return []
-        lines = path.read_text(encoding="utf-8").splitlines()[-limit:]
-        return [MemoryItem.model_validate(json.loads(line)) for line in lines]
+        lines = _tail_lines(self._path(session_id), limit)
+        items: list[MemoryItem] = []
+        for line in lines:
+            try:
+                items.append(MemoryItem.model_validate(json.loads(line)))
+            except (ValueError, json.JSONDecodeError):
+                # Skip malformed rows rather than aborting the whole recall.
+                continue
+        return items
 
     def summarize(self, session_id: str) -> str:
         items = self.recent(session_id, limit=8)

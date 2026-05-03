@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from typing import AsyncIterator
 
 from app.agents.companion import CompanionAgent
 from app.agents.desktop import DesktopAgent
@@ -8,6 +10,7 @@ from app.agents.planner import PlannerAgent
 from app.agents.router import RouterAgent
 from app.agents.terminal_agent import TerminalAgent
 from app.config import settings
+from app.logging import get_logger
 from app.schemas import (
     AgentTrace,
     ChatRequest,
@@ -26,6 +29,21 @@ from app.services.mcp_client import MCPClient
 from app.services.memory import MemoryStore
 from app.services.skill_loader import SkillLoader
 from app.tools.registry import ToolRegistry
+
+logger = get_logger("orchestrator")
+
+
+def _chunk_text(text: str, size: int) -> list[str]:
+    """Split a string into roughly fixed-size chunks for SSE delta events.
+
+    Returns at least one chunk for non-empty input (so the consumer always
+    sees the reply, even if it's shorter than ``size``).
+    """
+    if not text:
+        return []
+    if size <= 0:
+        return [text]
+    return [text[i : i + size] for i in range(0, len(text), size)]
 
 
 class MultiAgentOrchestrator:
@@ -57,10 +75,11 @@ class MultiAgentOrchestrator:
     async def bootstrap(self) -> None:
         """One-time async initialization (MCP discovery)."""
         try:
-            await self.registry.load_mcp_tools(self.mcp)
-        except Exception:
+            count = await self.registry.load_mcp_tools(self.mcp)
+            logger.info("MCP discovery loaded %d remote tool(s)", count)
+        except Exception as exc:
             # Non-fatal: MCP discovery should never block the HTTP server.
-            pass
+            logger.warning("MCP discovery failed: %s", exc)
 
     def _build_artifacts(self, tool_calls: list[ToolCallRecord]) -> list[dict[str, str]]:
         artifacts: list[dict[str, str]] = []
@@ -96,7 +115,7 @@ class MultiAgentOrchestrator:
                 {
                     "id": f"step-{index}",
                     "title": tool_call.name,
-                    "status": "completed" if "failed:" not in tool_call.result.lower() else "failed",
+                    "status": "completed" if tool_call.success else "failed",
                     "detail": tool_call.result,
                 }
             )
@@ -169,6 +188,98 @@ class MultiAgentOrchestrator:
             task=task,
             artifacts=artifacts,
         )
+
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[dict]:
+        """Run a chat turn and yield progress events for an SSE stream.
+
+        Event order: ``start`` → ``intent`` → ``tool_call`` (one per tool) →
+        ``delta`` (reply text in small chunks) → ``done``.
+
+        Tool calls are emitted *after* the agent finishes (the underlying
+        agent.handle is not yet streaming-aware), but the chunked delta makes
+        the UX feel responsive immediately.
+        """
+        yield {"event": "start", "data": {"session_id": request.session_id, "message": request.message}}
+
+        self.strategy.record_message(request.session_id, request.message)
+        self.memory.append(
+            MemoryItem(session_id=request.session_id, role="user", content=request.message)
+        )
+        self.memory.update_profile_from_message(request.session_id, request.message)
+        prompt_context = self.context.build_prompt_context(
+            request.session_id, request.message, request.attachments,
+        )
+
+        local_intent = self.router.classify_local(
+            request.message, has_attachments=bool(request.attachments),
+        )
+        model_plan = await self.router.plan(request.message, self.registry.names(), local_intent)
+        trace = self.planner.merge_intents(local_intent, model_plan)
+        delegated = trace.delegated_to or "companion-agent"
+
+        yield {
+            "event": "intent",
+            "data": {
+                "delegated_to": delegated,
+                "intent": local_intent.intent,
+                "confidence": local_intent.confidence,
+                "reasoning": trace.reasoning,
+            },
+        }
+
+        try:
+            reply, tool_calls = await self.agents[delegated].handle(
+                message=request.message,
+                registry=self.registry,
+                attachments=request.attachments,
+                memory_summary=prompt_context,
+                session_id=request.session_id,
+            )
+        except Exception as exc:  # pragma: no cover — defensive net for the stream
+            logger.exception("Streaming chat failed: %s", exc)
+            yield {"event": "error", "data": {"message": f"agent execution failed: {exc}"}}
+            return
+
+        for tc in tool_calls:
+            yield {
+                "event": "tool_call",
+                "data": {"name": tc.name, "args": tc.args, "result": tc.result, "success": tc.success},
+            }
+
+        # Chunk the reply for progressive rendering. Small enough chunks to feel
+        # responsive, large enough that we don't spam the event loop on long
+        # replies. ~30 chars per chunk plus a tiny await keeps Chrome's
+        # EventSource happy.
+        for chunk in _chunk_text(reply, 32):
+            yield {"event": "delta", "data": {"text": chunk}}
+            await asyncio.sleep(0)  # yield control so HTTP frames flush
+
+        enriched_reasoning = (
+            f"{trace.reasoning} Skills available: {len(self.skills.list_skills())}. "
+            f"MCP servers available: {len(self.mcp.list_servers())}."
+        )
+        final_trace = AgentTrace(
+            active_agent=delegated,
+            delegated_to=delegated,
+            reasoning=enriched_reasoning,
+            tool_calls=tool_calls,
+        )
+        self.memory.append(
+            MemoryItem(session_id=request.session_id, role="assistant", content=reply)
+        )
+        artifacts = self._build_artifacts(tool_calls)
+        task = self._build_task(request, delegated, reply, tool_calls)
+
+        yield {
+            "event": "done",
+            "data": {
+                "reply": reply,
+                "trace": final_trace.model_dump(),
+                "memory_summary": self.memory.summarize(request.session_id),
+                "task": task,
+                "artifacts": artifacts,
+            },
+        }
 
     async def observe_screen(self, request: ObservationRequest) -> ObservationResponse:
         observation_state = self.memory.load_observation_state(request.session_id)
