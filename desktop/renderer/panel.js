@@ -783,6 +783,35 @@ settingsSave?.addEventListener("click", () => saveSettings());
 // The pet's right-click menu can deep-link into a specific tab.
 window.bishoujo.onOpenSettings?.((tab) => openSettings(tab || "general"));
 
+function describeError(error, action) {
+  const raw = error?.message || String(error);
+  // The Electron IPC layer wraps thrown errors with the channel name. When
+  // the underlying cause is "fetch failed" the backend is unreachable;
+  // surface that as a single sentence the user can act on, instead of the
+  // raw "Error invoking remote method 'agent:settings:get': TypeError: fetch failed".
+  if (/fetch failed/i.test(raw)) {
+    return `${action}失败：无法连接 agent-core (127.0.0.1:8787)。请确认后端正在运行，然后点"重新加载"。`;
+  }
+  if (/HTTP\s*4\d\d/i.test(raw) || /failed:\s*4\d\d/.test(raw)) {
+    return `${action}失败：请求被后端拒绝 — ${raw}`;
+  }
+  if (/HTTP\s*5\d\d/i.test(raw) || /failed:\s*5\d\d/.test(raw)) {
+    return `${action}失败：后端内部错误 — ${raw}`;
+  }
+  return `${action}失败：${raw}`;
+}
+
+function renderConnectionError(message) {
+  if (!settingsBody) return;
+  clearChildren(settingsBody);
+  const card = el("div", { className: "settings-error-card" }, [
+    el("strong", { text: "后端不可达" }),
+    el("p", { className: "field-hint", text: message }),
+    el("p", { className: "field-hint", text: "提示：在 agent-core 目录运行 `python -m uvicorn app.main:app --port 8787`" }),
+  ]);
+  settingsBody.appendChild(card);
+}
+
 async function reloadSettings() {
   setSettingsStatus("正在加载设置...");
   try {
@@ -797,7 +826,9 @@ async function reloadSettings() {
     setSettingsStatus("已加载", "ok");
     setTimeout(() => setSettingsStatus(""), 1500);
   } catch (error) {
-    setSettingsStatus(`加载失败：${error.message}`, "error");
+    const msg = describeError(error, "加载");
+    setSettingsStatus(msg, "error");
+    if (!settingsState) renderConnectionError(msg);
   }
 }
 
@@ -816,7 +847,7 @@ async function saveSettings() {
     setSettingsStatus("已保存", "ok");
     setTimeout(() => setSettingsStatus(""), 1500);
   } catch (error) {
-    setSettingsStatus(`保存失败：${error.message}`, "error");
+    setSettingsStatus(describeError(error, "保存"), "error");
   }
 }
 

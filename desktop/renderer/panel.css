@@ -884,6 +884,26 @@ button:disabled {
 .settings-status.error { color: var(--danger); }
 .settings-status.dirty { color: var(--warn); }
 
+.settings-error-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid #ffd1bc;
+  border-radius: 10px;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.settings-error-card strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.settings-error-card .field-hint {
+  color: var(--danger);
+  opacity: 0.85;
+}
+
 /* Settings gear button */
 #settingsBtn.compact {
   width: 36px;
