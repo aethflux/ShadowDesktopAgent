@@ -20,7 +20,9 @@ do not need separate branches for each vendor.
 """
 from __future__ import annotations
 
+import asyncio
 import json
+import random
 import re
 import uuid
 from typing import Any
@@ -28,6 +30,45 @@ from typing import Any
 import httpx
 
 from app.config import Provider, settings
+from app.logging import get_logger
+
+logger = get_logger("services.model_client")
+
+# A single, lazily-initialized AsyncClient is reused across every LLM call so
+# that we get HTTP/1.1 keep-alive and a real connection pool. Building one per
+# request — as the previous version did — defeats pooling, slows tool-calling
+# loops dramatically, and burns ephemeral ports.
+_HTTP_CLIENT: httpx.AsyncClient | None = None
+_HTTP_CLIENT_LOCK = asyncio.Lock()
+
+
+async def get_http_client() -> httpx.AsyncClient:
+    global _HTTP_CLIENT
+    if _HTTP_CLIENT is None or _HTTP_CLIENT.is_closed:
+        async with _HTTP_CLIENT_LOCK:
+            if _HTTP_CLIENT is None or _HTTP_CLIENT.is_closed:
+                _HTTP_CLIENT = httpx.AsyncClient(
+                    timeout=httpx.Timeout(60.0, connect=10.0),
+                    limits=httpx.Limits(
+                        max_connections=32,
+                        max_keepalive_connections=16,
+                        keepalive_expiry=30.0,
+                    ),
+                )
+    return _HTTP_CLIENT
+
+
+async def close_http_client() -> None:
+    global _HTTP_CLIENT
+    if _HTTP_CLIENT is not None and not _HTTP_CLIENT.is_closed:
+        await _HTTP_CLIENT.aclose()
+    _HTTP_CLIENT = None
+
+
+# HTTP statuses where a retry has a real chance of succeeding. 4xx errors that
+# are not 408/429 are caller mistakes (bad payload, auth) — we surface them
+# immediately instead of looping.
+_RETRYABLE_STATUS = {408, 425, 429, 500, 502, 503, 504}
 
 
 # --------------------------------------------------------------------------- #
@@ -310,14 +351,47 @@ class ModelClient:
     # ---- HTTP plumbing --------------------------------------------------- #
 
     async def _post(self, url: str, headers: dict[str, str], payload: dict[str, Any]) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(url, headers=headers, json=payload)
+        client = await get_http_client()
+        max_attempts = max(1, settings.model_max_retries)
+        backoff_base = max(0.0, settings.model_retry_backoff_seconds)
+        last_exc: Exception | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = await client.post(url, headers=headers, json=payload)
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError) as exc:
+                last_exc = exc
+                if attempt >= max_attempts:
+                    raise RuntimeError(f"Network error calling {url} after {attempt} attempts: {exc}") from exc
+                await self._sleep_backoff(attempt, backoff_base)
+                continue
+
             if response.is_error:
                 detail = response.text.strip()
                 if len(detail) > 600:
                     detail = detail[:600] + "..."
+                if response.status_code in _RETRYABLE_STATUS and attempt < max_attempts:
+                    logger.warning(
+                        "Retrying %s after %d (attempt %d/%d): %s",
+                        url, response.status_code, attempt, max_attempts, detail,
+                    )
+                    await self._sleep_backoff(attempt, backoff_base)
+                    continue
                 raise RuntimeError(f"{response.status_code} from {url}: {detail}")
             return response.json()
+
+        # Loop fell through without returning — should be unreachable, but keep the
+        # type-checker happy and surface the last error if it ever happens.
+        raise RuntimeError(f"Exhausted retries calling {url}: {last_exc}")
+
+    @staticmethod
+    async def _sleep_backoff(attempt: int, base: float) -> None:
+        if base <= 0:
+            return
+        # Exponential backoff with a small jitter so multiple concurrent
+        # callers don't synchronize their retries.
+        delay = base * (2 ** (attempt - 1)) + random.uniform(0, base / 2)
+        await asyncio.sleep(min(delay, 8.0))
 
     def _openai_headers(self) -> dict[str, str]:
         token = settings.resolved_api_key(self.provider)
@@ -392,7 +466,7 @@ class ModelClient:
 
         payload: dict[str, Any] = {
             "model": self.resolved_model(),
-            "max_tokens": 2048,
+            "max_tokens": settings.anthropic_max_tokens,
             "temperature": temperature,
             "messages": anthropic_messages,
         }

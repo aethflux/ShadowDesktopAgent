@@ -3,48 +3,107 @@
  *
  * Responsibilities:
  *   - Drag-and-drop window movement
- *   - Right-click / double-click menu
+ *   - Right-click / double-click menu, mini chat
  *   - Continuous companion mode (periodic screen observation)
  *   - Cloud TTS playback with browser speech fallback
- *   - Engagement telemetry → passed to backend on every observe() call
+ *   - Engagement telemetry → backend on every observe()
+ *   - Agent state machine that drives expressions/animations:
+ *       idle | thinking | working | talking | watching | listening | error | happy
  */
 
 const petShell = document.getElementById("petShell");
 const bubble = document.getElementById("petBubble");
 const watchDot = document.getElementById("watchDot");
+const miniChat = document.getElementById("miniChat");
+const miniChatInput = document.getElementById("miniChatInput");
+const miniChatSend = document.getElementById("miniChatSend");
+const avatarSelect = document.getElementById("avatarSelect");
+const voiceSelect = document.getElementById("voiceSelect");
 
 const BACKEND_URL = "http://127.0.0.1:8787";
 const WATCH_SESSION_ID = "digital-twin-session";
+const CHAT_SESSION_ID = "desktop-session";
 const OBSERVE_INTERVAL_MS = 45_000;
 const AVATAR_CLASSES = ["avatar-streamer", "avatar-swordswoman", "avatar-cyber"];
-const defaultSettings = {
-  avatar: "streamer",
-  voice: "warm-girl",
-  watching: false,
-  voiceEnabled: true,
-  observeSpeechEnabled: true
-};
-let desktopSettings = { ...defaultSettings };
+const AVATAR_STORAGE_KEY = "hoshino.avatar";
+const VOICE_STORAGE_KEY = "hoshino.voice";
+
+let selectedAvatar = localStorage.getItem(AVATAR_STORAGE_KEY) || "streamer";
+let selectedVoice = localStorage.getItem(VOICE_STORAGE_KEY) || "warm-girl";
 
 function applyAvatar(value) {
-  const selectedAvatar = ["streamer", "swordswoman", "cyber"].includes(value) ? value : "streamer";
+  selectedAvatar = ["streamer", "swordswoman", "cyber"].includes(value) ? value : "streamer";
   petShell?.classList.remove(...AVATAR_CLASSES);
   petShell?.classList.add(`avatar-${selectedAvatar}`);
+  if (avatarSelect) avatarSelect.value = selectedAvatar;
+  localStorage.setItem(AVATAR_STORAGE_KEY, selectedAvatar);
 }
 
 function applyVoice(value) {
-  desktopSettings.voice = ["warm-girl", "sweet-lady", "gentleman", "storyteller"].includes(value) ? value : "warm-girl";
+  selectedVoice = ["warm-girl", "sweet-lady", "gentleman", "storyteller"].includes(value) ? value : "warm-girl";
+  if (voiceSelect) voiceSelect.value = selectedVoice;
+  localStorage.setItem(VOICE_STORAGE_KEY, selectedVoice);
 }
 
-function applySettings(next) {
-  desktopSettings = { ...desktopSettings, ...next };
-  applyVoice(desktopSettings.voice);
-  applyAvatar(desktopSettings.avatar);
-  setWatching(!!desktopSettings.watching, false);
+applyAvatar(selectedAvatar);
+applyVoice(selectedVoice);
+
+avatarSelect?.addEventListener("change", () => applyAvatar(avatarSelect.value));
+voiceSelect?.addEventListener("change", () => applyVoice(voiceSelect.value));
+
+// ---------------------------------------------------------------------------
+// Agent state machine
+// ---------------------------------------------------------------------------
+//
+// `data-state` on the pet shell drives all CSS expression rules. We layer
+// states on top of the long-lived "watching" mode: when a transient state
+// (thinking/working/talking/error/happy) finishes, we fall back to either
+// "watching" or "idle" depending on whether continuous companion mode is on.
+
+const STATE = {
+  IDLE: "idle",
+  THINKING: "thinking",
+  WORKING: "working",
+  TALKING: "talking",
+  WATCHING: "watching",
+  LISTENING: "listening",
+  ERROR: "error",
+  HAPPY: "happy",
+};
+
+let watching = false;
+let stateRevertTimer = null;
+let stickyState = null;     // when set, no auto-revert until cleared
+
+function baselineState() {
+  return watching ? STATE.WATCHING : STATE.IDLE;
+}
+
+function setState(next, { sticky = false, revertAfter = null } = {}) {
+  if (stateRevertTimer) {
+    clearTimeout(stateRevertTimer);
+    stateRevertTimer = null;
+  }
+  petShell.dataset.state = next;
+  stickyState = sticky ? next : null;
+  if (!sticky && next !== STATE.IDLE && next !== STATE.WATCHING) {
+    const ms = revertAfter ?? 3500;
+    stateRevertTimer = setTimeout(() => {
+      // If a sticky state took over while we waited, respect that.
+      if (stickyState) return;
+      petShell.dataset.state = baselineState();
+    }, ms);
+  }
+}
+
+function clearStickyState() {
+  stickyState = null;
+  if (stateRevertTimer) clearTimeout(stateRevertTimer);
+  petShell.dataset.state = baselineState();
 }
 
 // ---------------------------------------------------------------------------
-// Engagement tracker — feeds idle / keypress / mouse data to the backend
+// Engagement tracker
 // ---------------------------------------------------------------------------
 
 const _eng = {
@@ -79,7 +138,7 @@ function _engagementState() {
 }
 
 // ---------------------------------------------------------------------------
-// Pet movement
+// Pet movement (drag from anywhere except .mini-chat)
 // ---------------------------------------------------------------------------
 
 let dragStart = null;
@@ -153,6 +212,11 @@ function showBubble(text, sticky = false) {
 
 function setTalking(active) {
   petShell?.classList.toggle("talking", active);
+  if (active) {
+    setState(STATE.TALKING, { sticky: true });
+  } else if (stickyState === STATE.TALKING) {
+    clearStickyState();
+  }
 }
 
 let currentAudio = null;
@@ -225,7 +289,7 @@ function _playAudioUrl(url, fallbackText) {
     setTalking(false);
     console.warn("[pet] cloud audio failed, falling back to browser speech", {
       src,
-      error: audio.error ? audio.error.code : null
+      error: audio.error ? audio.error.code : null,
     });
     if (currentAudio === audio) currentAudio = null;
     speak(fallbackText);
@@ -240,8 +304,7 @@ function _playAudioUrl(url, fallbackText) {
 
 async function say(text) {
   if (!text) return;
-  if (!desktopSettings.voiceEnabled) return;
-  const ttsResp = await window.bishoujo.tts({ text, voice: desktopSettings.voice });
+  const ttsResp = await window.bishoujo.tts({ text, voice: selectedVoice });
   console.log("[pet] tts response", ttsResp);
   if (ttsResp.audio_url) {
     _playAudioUrl(ttsResp.audio_url, text);
@@ -254,7 +317,6 @@ async function say(text) {
 // Observation loop
 // ---------------------------------------------------------------------------
 
-let watching = false;
 let observing = false;
 let observeTimer = null;
 
@@ -262,6 +324,7 @@ async function observe(trigger = "interval") {
   if (observing) return;
   if (_isIdle() && trigger === "interval") return;
   observing = true;
+  // Watching is already sticky once enabled — no transient state change.
   try {
     const eng = _engagementState();
     const response = await window.bishoujo.observe({
@@ -274,58 +337,88 @@ async function observe(trigger = "interval") {
     });
 
     const text = response.reply || "我在旁边陪着你。";
-    const shouldSpeak = desktopSettings.observeSpeechEnabled
-      && (trigger === "manual" || response.should_speak || response.significance === "high");
+    const shouldSpeak = trigger === "manual" || response.should_speak || response.significance === "high";
     if (shouldSpeak && text) {
       showBubble(text.slice(0, 86));
       await say(text);
-    } else if (text) {
-      showBubble(text.slice(0, 86));
     }
   } catch (error) {
+    setState(STATE.ERROR, { revertAfter: 2400 });
     showBubble(`观察失败：${error && error.message ? error.message : String(error)}`);
   } finally {
     observing = false;
   }
 }
 
+miniChat?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const text = miniChatInput.value.trim();
+  if (!text) return;
+
+  miniChatInput.value = "";
+  miniChatInput.disabled = true;
+  miniChatSend.disabled = true;
+
+  setState(STATE.THINKING, { sticky: true });
+  showBubble("我在想...");
+
+  try {
+    const response = await window.bishoujo.chat({
+      message: text,
+      session_id: CHAT_SESSION_ID,
+      attachments: [],
+    });
+    const reply = response.reply || "我在。";
+
+    // If the agent invoked tools, briefly show the working sparkle state
+    // before transitioning to the spoken reply.
+    const usedTools = (response.trace?.tool_calls || []).length > 0;
+    if (usedTools) {
+      setState(STATE.WORKING, { sticky: true });
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    // Quick happy beat then talking.
+    setState(STATE.HAPPY, { sticky: true });
+    await new Promise((r) => setTimeout(r, 350));
+
+    showBubble(reply.slice(0, 86));
+    await say(reply); // setTalking inside say() will set TALKING sticky
+  } catch (error) {
+    setState(STATE.ERROR, { revertAfter: 2800 });
+    const message = error && error.message ? error.message : String(error);
+    showBubble(`请求失败：${message}`, true);
+  } finally {
+    miniChatInput.disabled = false;
+    miniChatSend.disabled = false;
+    miniChatInput.focus();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Companion mode
 // ---------------------------------------------------------------------------
 
-function setWatching(next, notifyMain = true) {
+function setWatching(next) {
   watching = next;
   watchDot?.classList.toggle("active", watching);
-  if (notifyMain) {
-    window.bishoujo.setWatching(watching);
-  }
+  window.bishoujo.setWatching(watching);
   if (observeTimer) {
     clearInterval(observeTimer);
     observeTimer = null;
   }
   if (watching) {
+    setState(STATE.WATCHING, { sticky: true });
     showBubble("持续陪伴已开启，我会像搭档一样偶尔看看屏幕。", true);
     observe("manual");
     observeTimer = setInterval(() => observe("interval"), OBSERVE_INTERVAL_MS);
   } else {
+    clearStickyState();
     showBubble("持续陪伴已暂停。");
   }
 }
 
 window.bishoujo.onWatchingChanged((next) => {
-  if (next !== watching) setWatching(next, false);
-});
-
-window.bishoujo.onSettingsChanged((next) => {
-  applySettings(next);
-});
-
-window.bishoujo.onAvatarChanged((avatar) => {
-  applySettings({ avatar });
-});
-
-window.bishoujo.onVoiceChanged((voice) => {
-  applySettings({ voice });
+  if (next !== watching) setWatching(next);
 });
 
 petShell?.addEventListener("contextmenu", (event) => {
@@ -338,9 +431,8 @@ petShell?.addEventListener("dblclick", (event) => {
   setWatching(!watching);
 });
 
-window.bishoujo.settings().then((settings) => {
-  applySettings(settings);
-}).catch((error) => {
-  console.warn("[pet] failed to load settings", error);
-  applySettings(defaultSettings);
-});
+// ---------------------------------------------------------------------------
+// Idle entry — explicit so the pet starts in a known state
+// ---------------------------------------------------------------------------
+
+setState(STATE.IDLE);

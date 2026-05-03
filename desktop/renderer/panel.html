@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; img-src 'self' data: http://127.0.0.1:8787;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; img-src 'self' data: http://127.0.0.1:8787; connect-src 'self' http://127.0.0.1:8787;" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hoshino Agent Console</title>
     <link rel="stylesheet" href="./panel.css" />
@@ -10,132 +10,71 @@
   <body>
     <main class="app">
       <header class="topbar">
-        <div class="brand">
-          <p class="eyebrow">Hoshino Agent</p>
-          <h1>控制台</h1>
+        <div>
+          <h1>Hoshino 控制台</h1>
+          <p class="sub">对话、截图、工具调用和运行状态集中在这里。</p>
         </div>
         <div class="topbar-actions">
-          <nav class="tabbar" aria-label="页面">
-            <button class="tab active" data-tab="chat">对话</button>
-            <button class="tab" data-tab="settings">设置</button>
-          </nav>
+          <span id="readyDot" class="ready-dot" title="Backend status"></span>
           <button id="voiceBtn" class="ghost">语音输入</button>
         </div>
       </header>
 
-      <section class="page page-chat active" data-page="chat">
-        <section class="chat-shell">
-          <div class="chat-head">
-            <div>
-              <h2>对话</h2>
-              <p class="sub">直接说话、上传截图、继续当前上下文。</p>
-            </div>
-            <span id="taskStatus" class="status-pill">idle</span>
-          </div>
+      <section class="status-strip" id="capabilities"></section>
 
+      <section class="workspace-grid">
+        <aside class="sessions panel">
+          <div class="section-head">
+            <h2>会话</h2>
+            <button id="newSessionBtn" class="ghost compact" title="新建会话">+</button>
+          </div>
+          <div id="sessionList" class="session-list"></div>
+        </aside>
+
+        <section class="chat panel">
+          <div class="section-head">
+            <h2 id="chatTitle">对话</h2>
+            <span id="taskStatus" class="status-pill">Idle</span>
+          </div>
           <div id="chatLog" class="chat-log"></div>
 
           <form class="composer" id="composer">
             <textarea id="message" placeholder="输入消息，例如：看看当前屏幕，帮我判断哪里出了问题"></textarea>
             <div class="composer-row">
               <input id="imageInput" type="file" accept="image/*" />
-              <button type="submit">发送</button>
+              <div class="composer-buttons">
+                <label class="streaming-toggle">
+                  <input type="checkbox" id="streamingToggle" checked />
+                  <span>流式</span>
+                </label>
+                <button type="submit">发送</button>
+              </div>
             </div>
           </form>
         </section>
-      </section>
 
-      <section class="page page-settings" data-page="settings">
-        <div class="settings-grid">
-          <section class="panel setting-panel">
-            <div class="section-head">
-              <div>
-                <h2>陪伴开关</h2>
-                <p class="sub">控制桌宠的常驻行为和发声方式。</p>
-              </div>
-            </div>
-            <label class="toggle-row">
-              <div>
-                <strong>持续陪伴</strong>
-                <p class="meta-text">后台观察屏幕并维持陪伴状态。</p>
-              </div>
-              <input id="watchingToggle" type="checkbox" />
-            </label>
-            <label class="toggle-row">
-              <div>
-                <strong>语音播报</strong>
-                <p class="meta-text">允许桌宠直接发声。</p>
-              </div>
-              <input id="voiceEnabledToggle" type="checkbox" />
-            </label>
-            <label class="toggle-row">
-              <div>
-                <strong>观察时发声</strong>
-                <p class="meta-text">自动观察到内容时是否开口说话。</p>
-              </div>
-              <input id="observeSpeechToggle" type="checkbox" />
-            </label>
-          </section>
-
-          <section class="panel setting-panel">
-            <div class="section-head">
-              <div>
-                <h2>形象与音色</h2>
-                <p class="sub">预设形象和音色切换。</p>
-              </div>
-            </div>
-            <div class="field-grid">
-              <label class="field">
-                <span>形象</span>
-                <select id="avatarSelect" aria-label="形象">
-                  <option value="streamer">虚拟主播</option>
-                  <option value="swordswoman">见习剑士</option>
-                  <option value="cyber">电子搭档</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>音色</span>
-                <select id="voiceSelect" aria-label="音色">
-                  <option value="warm-girl">清亮女声</option>
-                  <option value="sweet-lady">甜美女声</option>
-                  <option value="gentleman">青年男声</option>
-                  <option value="storyteller">旁白男声</option>
-                </select>
-              </label>
-            </div>
-          </section>
-
-          <section class="panel setting-panel">
-            <div class="section-head">
-              <div>
-                <h2>运行状态</h2>
-                <p class="sub">当前模型、特性开关和可用工具。</p>
-              </div>
-            </div>
-            <section class="status-strip" id="capabilities"></section>
-          </section>
-
-          <section class="panel setting-panel" id="taskPanel">
+        <aside class="sidebar">
+          <section class="panel" id="taskPanel">
             <h2>任务</h2>
             <div id="taskContent" class="task-content">
               <p class="empty">等待你的第一个任务。</p>
             </div>
           </section>
 
-          <section class="panel setting-panel">
+          <section class="panel">
             <h2>工具</h2>
             <div id="timeline" class="timeline-list">
               <p class="empty">工具调用会显示在这里。</p>
             </div>
           </section>
 
-          <section class="panel setting-panel">
+          <section class="panel">
             <h2>产物</h2>
             <div id="artifacts" class="artifact-list">
               <p class="empty">截图和产物会显示在这里。</p>
             </div>
           </section>
-        </div>
+        </aside>
       </section>
     </main>
     <script src="./panel.js"></script>

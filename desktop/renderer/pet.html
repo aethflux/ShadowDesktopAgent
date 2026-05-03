@@ -11,25 +11,58 @@
     <link rel="stylesheet" href="./pet.css" />
   </head>
   <body>
-    <div class="pet-shell avatar-streamer" id="petShell">
+    <div class="pet-shell avatar-streamer" id="petShell" data-state="idle">
       <div class="aura"></div>
-      <div class="floor-shadow"></div>
       <div class="watch-dot" id="watchDot" title="持续陪伴状态"></div>
       <div class="pet-bubble" id="petBubble">右键开启持续陪伴，双击也可以切换。</div>
 
+      <!-- State expression overlays -->
+      <div class="state-fx" aria-hidden="true">
+        <div class="thought">
+          <span class="t-dot d1"></span>
+          <span class="t-dot d2"></span>
+          <span class="t-dot d3"></span>
+        </div>
+        <div class="sweat"></div>
+        <div class="sparkle s1"></div>
+        <div class="sparkle s2"></div>
+        <div class="sparkle s3"></div>
+        <div class="sparkle s4"></div>
+        <div class="sound-waves">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="heart h1"></div>
+        <div class="heart h2"></div>
+      </div>
+
+      <!-- CSS-only avatar — pointer-events:none so the shell receives clicks -->
       <div class="avatar" id="petBody" aria-label="Hoshino digital companion" style="pointer-events:none;">
+        <div class="ahoge"></div>
         <div class="hair hair-back"></div>
-        <div class="side-lock left"></div>
-        <div class="side-lock right"></div>
+        <div class="side-lock left">
+          <div class="lock-tip"></div>
+        </div>
+        <div class="side-lock right">
+          <div class="lock-tip"></div>
+        </div>
         <div class="body">
-          <div class="shoulder left"></div>
-          <div class="shoulder right"></div>
           <div class="cape"></div>
           <div class="torso">
-            <div class="collar"></div>
-            <div class="ribbon"></div>
+            <div class="sailor-collar">
+              <div class="collar-stripe"></div>
+              <div class="collar-stripe two"></div>
+            </div>
+            <div class="ribbon">
+              <div class="ribbon-wing left"></div>
+              <div class="ribbon-wing right"></div>
+              <div class="ribbon-knot"></div>
+              <div class="ribbon-tail left"></div>
+              <div class="ribbon-tail right"></div>
+            </div>
             <div class="chest-line"></div>
-            <div class="skirt"></div>
+            <div class="skirt">
+              <div class="skirt-frill"></div>
+            </div>
           </div>
           <div class="arm left"></div>
           <div class="arm right"></div>
@@ -37,16 +70,58 @@
         </div>
         <div class="head">
           <div class="face">
-            <div class="eye left"></div>
-            <div class="eye right"></div>
+            <div class="blush left"></div>
+            <div class="blush right"></div>
+            <div class="eye left">
+              <div class="iris"></div>
+              <div class="pupil"></div>
+              <div class="hl big"></div>
+              <div class="hl small"></div>
+            </div>
+            <div class="eye right">
+              <div class="iris"></div>
+              <div class="pupil"></div>
+              <div class="hl big"></div>
+              <div class="hl small"></div>
+            </div>
             <div class="mouth" id="mouth"></div>
           </div>
-          <div class="bangs"></div>
+          <div class="bangs">
+            <div class="bang center"></div>
+            <div class="bang side-left"></div>
+            <div class="bang side-right"></div>
+          </div>
           <div class="hair-clip"></div>
           <div class="headset"></div>
           <div class="mic"></div>
         </div>
       </div>
+
+      <form class="mini-chat" id="miniChat" data-no-drag>
+        <div class="mini-chat-row">
+          <input id="miniChatInput" type="text" placeholder="输入一句话..." autocomplete="off" />
+          <button id="miniChatSend" type="submit">发送</button>
+        </div>
+        <div class="mini-controls">
+          <label>
+            <span>形象</span>
+            <select id="avatarSelect" aria-label="形象">
+              <option value="streamer">虚拟主播</option>
+              <option value="swordswoman">见习剑士</option>
+              <option value="cyber">电子搭档</option>
+            </select>
+          </label>
+          <label>
+            <span>音色</span>
+            <select id="voiceSelect" aria-label="音色">
+              <option value="warm-girl">清亮女声</option>
+              <option value="sweet-lady">甜美女声</option>
+              <option value="gentleman">青年男声</option>
+              <option value="storyteller">旁白男声</option>
+            </select>
+          </label>
+        </div>
+      </form>
     </div>
     <script type="module" src="./pet.js"></script>
   </body>
