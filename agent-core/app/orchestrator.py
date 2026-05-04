@@ -30,6 +30,7 @@ from app.services.mcp_client import MCPClient
 from app.services.memory import MemoryStore
 from app.services.skill_loader import SkillLoader
 from app.tools.registry import ToolRegistry
+from app.tools.result_status import infer_tool_status
 
 logger = get_logger("orchestrator")
 
@@ -141,22 +142,13 @@ class MultiAgentOrchestrator:
     def _build_task(self, request: ChatRequest, delegated: str, reply: str, tool_calls: list[ToolCallRecord]) -> dict:
         steps = []
         for index, tool_call in enumerate(tool_calls, start=1):
-            # Combine the explicit ``success`` flag (set by the agent when the
-            # tool raised or wasn't registered) with string heuristics on the
-            # tool's stdout — terminal commands can exit non-zero without
-            # raising, so the heuristic catches that case.
-            lowered_result = tool_call.result.lower()
-            heuristic_failed = (
-                "failed:" in lowered_result
-                or "blocked unsafe command" in lowered_result
-                or ("exit=" in lowered_result and "exit=0" not in lowered_result)
-            )
-            failed = (not tool_call.success) or heuristic_failed
+            status = infer_tool_status(tool_call.result, success=tool_call.success)
             steps.append(
                 {
                     "id": f"step-{index}",
                     "title": tool_call.name,
-                    "status": "failed" if failed else "completed",
+                    "status": status,
+                    "args": tool_call.args,
                     "detail": tool_call.result,
                 }
             )
@@ -172,11 +164,22 @@ class MultiAgentOrchestrator:
         return {
             "title": request.message[:72],
             "owner": delegated,
-            "status": "failed" if any(step["status"] == "failed" for step in steps) else "completed",
+            "status": self._overall_task_status(steps),
             "reply_preview": reply[:120],
             "step_count": len(steps),
             "steps": steps,
         }
+
+    @staticmethod
+    def _overall_task_status(steps: list[dict]) -> str:
+        statuses = {step.get("status") for step in steps}
+        if "failed" in statuses:
+            return "failed"
+        if "blocked" in statuses:
+            return "blocked"
+        if "running" in statuses:
+            return "running"
+        return "completed"
 
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
         # Feed user message to the companion strategy for sentiment tracking

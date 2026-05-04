@@ -8,6 +8,7 @@ from typing import Any
 from app.schemas import ChatAttachment, ToolCallRecord
 from app.services.model_client import ModelClient
 from app.tools.registry import ToolRegistry
+from app.tools.result_status import infer_tool_status
 
 
 class LLMAgent:
@@ -114,6 +115,8 @@ class LLMAgent:
                                 success = False
                         except Exception as exc:
                             result = f"Tool {name} failed: {exc}"
+                            success = False
+                        if infer_tool_status(result, success=success) != "completed":
                             success = False
                         tool_calls.append(
                             ToolCallRecord(name=name, args=args, result=result, success=success)

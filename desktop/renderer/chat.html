@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hoshino Chat Input</title>
+    <link rel="stylesheet" href="./chat.css" />
+  </head>
+  <body>
+    <form class="chat-shell" id="chatForm">
+      <div class="drag-handle" title="拖动输入框" aria-hidden="true"></div>
+      <input id="chatInput" type="text" placeholder="输入一句话..." autocomplete="off" />
+      <button id="sendBtn" type="submit">发送</button>
+    </form>
+    <script type="module" src="./chat.js"></script>
+  </body>
+</html>

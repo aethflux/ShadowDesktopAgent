@@ -53,7 +53,7 @@ body {
 .pet-shell {
   position: relative;
   width: 240px;
-  height: 430px;
+  height: 350px;
   cursor: grab;
   user-select: none;
 }
@@ -931,94 +931,6 @@ body {
 [data-state="happy"] .avatar {
   animation: happyBounce 0.9s ease-in-out;
 }
-
-/* -------------------------------------------------------------------------
-   Mini-chat panel
-   ------------------------------------------------------------------------- */
-
-.mini-chat {
-  position: absolute;
-  left: 10px;
-  bottom: 8px;
-  width: 220px;
-  padding: 8px;
-  border: 1px solid rgba(75, 58, 58, 0.16);
-  border-radius: 12px;
-  background: rgba(255, 252, 248, 0.94);
-  box-shadow: 0 10px 22px var(--shadow);
-  color: var(--line);
-  cursor: default;
-  user-select: text;
-  z-index: 40;
-  backdrop-filter: blur(6px);
-}
-
-.mini-chat-row {
-  display: grid;
-  grid-template-columns: 1fr 50px;
-  gap: 6px;
-}
-
-.mini-chat input,
-.mini-chat button,
-.mini-chat select {
-  height: 30px;
-  border-radius: 8px;
-  font: inherit;
-  font-size: 12px;
-}
-
-.mini-chat input,
-.mini-chat select {
-  min-width: 0;
-  border: 1px solid rgba(75, 58, 58, 0.22);
-  padding: 0 8px;
-  color: var(--line);
-  background: var(--white);
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.mini-chat input:focus,
-.mini-chat select:focus {
-  outline: none;
-  border-color: var(--pink);
-  background: #fff8fb;
-}
-
-.mini-chat select {
-  width: 100%;
-  height: 28px;
-  padding: 0 6px;
-}
-
-.mini-chat button {
-  border: 1px solid var(--pink-deep);
-  color: #fffdf8;
-  background: linear-gradient(180deg, var(--pink), var(--pink-deep));
-  cursor: pointer;
-  transition: filter 0.15s, transform 0.05s;
-}
-
-.mini-chat button:hover { filter: brightness(1.05); }
-.mini-chat button:active { transform: scale(0.97); }
-
-.mini-controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin-top: 7px;
-}
-
-.mini-controls label { display: grid; gap: 3px; }
-
-.mini-controls span {
-  color: rgba(75, 58, 58, 0.7);
-  font-size: 11px;
-  line-height: 1;
-}
-
-.mini-chat button:disabled,
-.mini-chat input:disabled { opacity: 0.62; }
 
 /* -------------------------------------------------------------------------
    Avatar variants

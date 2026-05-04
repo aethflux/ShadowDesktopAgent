@@ -8,8 +8,21 @@ type AgentSettings = Record<string, unknown>;
 /** Window-local UX preferences (Electron-side only — not synced to backend). */
 type DesktopPrefs = {
   avatar: string;
+  petVoice: string;
   voiceEnabled: boolean;
   observeSpeechEnabled: boolean;
+};
+
+type PanelHistoryEntry = {
+  id?: string;
+  sessionId: string;
+  title?: string;
+  fixed?: boolean;
+  role: "user" | "assistant";
+  text: string;
+  meta?: string;
+  ts?: number;
+  retentionMs?: number;
 };
 
 type ProviderListing = {
@@ -42,6 +55,13 @@ contextBridge.exposeInMainWorld("bishoujo", {
   desktopPrefs: () => ipcRenderer.invoke("app:prefs:get") as Promise<DesktopPrefs>,
   updateDesktopPrefs: (patch: Partial<DesktopPrefs>) =>
     ipcRenderer.invoke("app:prefs:update", patch) as Promise<DesktopPrefs>,
+  recordPanelHistory: (entry: PanelHistoryEntry) =>
+    ipcRenderer.invoke("app:panel-history:record", entry) as Promise<PanelHistoryEntry>,
+  listPanelHistoryEvents: () =>
+    ipcRenderer.invoke("app:panel-history:list") as Promise<PanelHistoryEntry[]>,
+  onPanelHistoryEvent: (handler: (entry: PanelHistoryEntry) => void) => {
+    ipcRenderer.on("app:panel-history-event", (_event, entry: PanelHistoryEntry) => handler(entry));
+  },
   onDesktopPrefsChanged: (handler: (prefs: DesktopPrefs) => void) => {
     ipcRenderer.on("app:prefs-changed", (_event, prefs: DesktopPrefs) => handler(prefs));
   },
@@ -56,6 +76,14 @@ contextBridge.exposeInMainWorld("bishoujo", {
   startPetDrag: (point: Point) => ipcRenderer.send("pet:drag-start", point),
   movePetDrag: (point: Point) => ipcRenderer.send("pet:drag-move", point),
   endPetDrag: () => ipcRenderer.send("pet:drag-end"),
+  submitPetChat: (text: string) => ipcRenderer.send("chat:submit", text),
+  setPetChatBusy: (busy: boolean) => ipcRenderer.send("chat:busy", busy),
+  onPetChatSubmit: (handler: (text: string) => void) => {
+    ipcRenderer.on("pet:chat-submit", (_event, text: string) => handler(text));
+  },
+  onPetChatBusyChanged: (handler: (busy: boolean) => void) => {
+    ipcRenderer.on("chat:busy-changed", (_event, busy: boolean) => handler(busy));
+  },
 
   // Cross-window settings deep-link: pet's right-click menu can ask the
   // panel to open the settings modal at a particular tab.
@@ -78,6 +106,9 @@ declare global {
       listProviders: () => Promise<ProviderListing>;
       desktopPrefs: () => Promise<DesktopPrefs>;
       updateDesktopPrefs: (patch: Partial<DesktopPrefs>) => Promise<DesktopPrefs>;
+      recordPanelHistory: (entry: PanelHistoryEntry) => Promise<PanelHistoryEntry>;
+      listPanelHistoryEvents: () => Promise<PanelHistoryEntry[]>;
+      onPanelHistoryEvent: (handler: (entry: PanelHistoryEntry) => void) => void;
       onDesktopPrefsChanged: (handler: (prefs: DesktopPrefs) => void) => void;
       togglePanel: () => void;
       showPetMenu: () => void;
@@ -86,6 +117,10 @@ declare global {
       startPetDrag: (point: Point) => void;
       movePetDrag: (point: Point) => void;
       endPetDrag: () => void;
+      submitPetChat: (text: string) => void;
+      setPetChatBusy: (busy: boolean) => void;
+      onPetChatSubmit: (handler: (text: string) => void) => void;
+      onPetChatBusyChanged: (handler: (busy: boolean) => void) => void;
       onOpenSettings: (handler: (tab?: string) => void) => void;
       requestOpenSettings: (tab?: string) => void;
     };

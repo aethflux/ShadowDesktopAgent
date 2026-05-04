@@ -58,6 +58,46 @@ def test_heuristic_catches_nonzero_exit_code() -> None:
     assert task["steps"][0]["status"] == "failed"
 
 
+def test_heuristic_catches_mcp_tool_error() -> None:
+    orch = _orchestrator()
+    request = ChatRequest(message="hi")
+    tool_calls = [
+        ToolCallRecord(
+            name="mcp.filesystem.list_directory",
+            args={"path": "E:\\agent\\zhuochong"},
+            result=(
+                "MCP tool error: Access denied - path outside allowed directories: "
+                "E:\\agent\\zhuochong not in E:\\agent\\zhuochong\\agent-core\\skills"
+            ),
+            success=True,
+        ),
+    ]
+
+    task = orch._build_task(request, "terminal-agent", "done", tool_calls)
+
+    assert task["status"] == "failed"
+    assert task["steps"][0]["status"] == "failed"
+    assert task["steps"][0]["args"] == {"path": "E:\\agent\\zhuochong"}
+
+
+def test_heuristic_marks_policy_block_as_blocked() -> None:
+    orch = _orchestrator()
+    request = ChatRequest(message="hi")
+    tool_calls = [
+        ToolCallRecord(
+            name="cli.run",
+            args={"command": "cmd"},
+            result="Tool cli.run blocked: command 'cmd' is not allowlisted.",
+            success=False,
+        ),
+    ]
+
+    task = orch._build_task(request, "terminal-agent", "done", tool_calls)
+
+    assert task["status"] == "blocked"
+    assert task["steps"][0]["status"] == "blocked"
+
+
 def test_empty_tool_calls_yields_direct_response_step() -> None:
     orch = _orchestrator()
     request = ChatRequest(message="hello")

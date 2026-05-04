@@ -10,8 +10,21 @@ type DragState = { startMouse: Point; startWindow: Point };
 /** Window-local UX preferences. Persisted to ``userData/desktop-prefs.json``. */
 type DesktopPrefs = {
   avatar: string;
+  petVoice: string;
   voiceEnabled: boolean;
   observeSpeechEnabled: boolean;
+};
+
+type PanelHistoryEntry = {
+  id?: string;
+  sessionId: string;
+  title?: string;
+  fixed?: boolean;
+  role: "user" | "assistant";
+  text: string;
+  meta?: string;
+  ts?: number;
+  retentionMs?: number;
 };
 
 type AgentSettingsView = Record<string, unknown>;
@@ -29,11 +42,26 @@ type ProviderListing = {
 
 const DEFAULT_PREFS: DesktopPrefs = {
   avatar: "streamer",
+  petVoice: "warm-girl",
   voiceEnabled: true,
   observeSpeechEnabled: true
 };
 
+const AVATAR_OPTIONS = [
+  { id: "streamer", label: "虚拟主播" },
+  { id: "swordswoman", label: "见习剑士" },
+  { id: "cyber", label: "电子搭档" }
+];
+
+const PET_VOICE_OPTIONS = [
+  { id: "warm-girl", label: "清亮女声" },
+  { id: "sweet-lady", label: "甜美女声" },
+  { id: "gentleman", label: "青年男声" },
+  { id: "storyteller", label: "旁白男声" }
+];
+
 let petWindow: BrowserWindow | null = null;
+let chatWindow: BrowserWindow | null = null;
 let panelWindow: BrowserWindow | null = null;
 let petDragState: DragState | null = null;
 let companionWatching = false;
@@ -52,6 +80,10 @@ if (!singleInstanceLock) {
 
 function prefsPath(): string {
   return path.join(app.getPath("userData"), "desktop-prefs.json");
+}
+
+function panelHistoryPath(): string {
+  return path.join(app.getPath("userData"), "panel-history-events.json");
 }
 
 function loadPrefs(): DesktopPrefs {
@@ -76,9 +108,69 @@ function savePrefs(prefs: DesktopPrefs): void {
 function applyPrefsPatch(patch: Partial<DesktopPrefs>): DesktopPrefs {
   desktopPrefs = { ...desktopPrefs, ...patch };
   savePrefs(desktopPrefs);
-  petWindow?.webContents.send("app:prefs-changed", desktopPrefs);
-  panelWindow?.webContents.send("app:prefs-changed", desktopPrefs);
+  sendToWindow(petWindow, "app:prefs-changed", desktopPrefs);
+  sendToWindow(panelWindow, "app:prefs-changed", desktopPrefs);
   return desktopPrefs;
+}
+
+function loadPanelHistoryEvents(): PanelHistoryEntry[] {
+  try {
+    const raw = fs.readFileSync(panelHistoryPath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    const now = Date.now();
+    const retained = parsed.filter((item) => {
+      const retention = Number(item.retentionMs || 0);
+      return !retention || now - Number(item.ts || 0) <= retention;
+    });
+    if (retained.length !== parsed.length) {
+      savePanelHistoryEvents(retained);
+    }
+    return retained;
+  } catch {
+    return [];
+  }
+}
+
+function savePanelHistoryEvents(events: PanelHistoryEntry[]): void {
+  try {
+    fs.mkdirSync(path.dirname(panelHistoryPath()), { recursive: true });
+    fs.writeFileSync(panelHistoryPath(), JSON.stringify(events.slice(-500), null, 2), "utf-8");
+  } catch (error) {
+    console.warn("Could not save panel history events:", error);
+  }
+}
+
+function normalizePanelHistoryEntry(entry: PanelHistoryEntry): PanelHistoryEntry {
+  const ts = Number(entry.ts || Date.now());
+  return {
+    id: entry.id || `${entry.sessionId}-${ts}-${Math.random().toString(36).slice(2, 8)}`,
+    sessionId: entry.sessionId,
+    title: entry.title,
+    fixed: !!entry.fixed,
+    role: entry.role === "user" ? "user" : "assistant",
+    text: String(entry.text || ""),
+    meta: entry.meta ? String(entry.meta) : "",
+    ts,
+    retentionMs: entry.retentionMs ? Number(entry.retentionMs) : undefined,
+  };
+}
+
+function recordPanelHistoryEvent(entry: PanelHistoryEntry): PanelHistoryEntry {
+  const normalized = normalizePanelHistoryEntry(entry);
+  const now = Date.now();
+  const events = loadPanelHistoryEvents()
+    .filter((item) => {
+      const retention = Number(item.retentionMs || 0);
+      return !retention || now - Number(item.ts || 0) <= retention;
+    })
+    .filter((item) => item.id !== normalized.id);
+  events.push(normalized);
+  savePanelHistoryEvents(events);
+  sendToWindow(panelWindow, "app:panel-history-event", normalized);
+  return normalized;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +200,7 @@ function attachWindowDiagnostics(name: string, win: BrowserWindow): void {
 function createPetWindow(): BrowserWindow {
   const display = screen.getPrimaryDisplay().workAreaSize;
   const width = 240;
-  const height = 430;
+  const height = 350;
   const win = new BrowserWindow({
     width,
     height,
@@ -128,6 +220,42 @@ function createPetWindow(): BrowserWindow {
 
   win.loadFile(path.join(__dirname, "../renderer/pet.html"));
   attachWindowDiagnostics("pet", win);
+  win.on("closed", () => {
+    if (petWindow === win) {
+      petWindow = null;
+    }
+  });
+  return win;
+}
+
+function createChatWindow(): BrowserWindow {
+  const display = screen.getPrimaryDisplay().workAreaSize;
+  const width = 300;
+  const height = 62;
+  const win = new BrowserWindow({
+    width,
+    height,
+    x: display.width - width - 24,
+    y: display.height - height - 40,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js")
+    }
+  });
+
+  win.loadFile(path.join(__dirname, "../renderer/chat.html"));
+  attachWindowDiagnostics("chat", win);
+  win.on("closed", () => {
+    if (chatWindow === win) {
+      chatWindow = null;
+    }
+  });
   return win;
 }
 
@@ -146,52 +274,89 @@ function createPanelWindow(): BrowserWindow {
   });
   win.loadFile(path.join(__dirname, "../renderer/panel.html"));
   attachWindowDiagnostics("panel", win);
+  win.on("closed", () => {
+    if (panelWindow === win) {
+      panelWindow = null;
+    }
+  });
   return win;
 }
 
-function openPanelWindow(focusTab?: string): void {
-  if (!panelWindow) {
+function isUsableWindow(win: BrowserWindow | null): win is BrowserWindow {
+  return !!win && !win.isDestroyed();
+}
+
+function ensurePanelWindow(): BrowserWindow {
+  if (!isUsableWindow(panelWindow)) {
     panelWindow = createPanelWindow();
   }
-  if (!panelWindow.isVisible()) {
-    panelWindow.show();
+  return panelWindow;
+}
+
+function ensurePetWindow(): BrowserWindow {
+  if (!isUsableWindow(petWindow)) {
+    petWindow = createPetWindow();
   }
-  panelWindow.focus();
+  return petWindow;
+}
+
+function ensureChatWindow(): BrowserWindow {
+  if (!isUsableWindow(chatWindow)) {
+    chatWindow = createChatWindow();
+  }
+  return chatWindow;
+}
+
+function sendToWindow(win: BrowserWindow | null, channel: string, ...args: unknown[]): void {
+  if (!isUsableWindow(win) || win.webContents.isDestroyed()) {
+    return;
+  }
+  win.webContents.send(channel, ...args);
+}
+
+function openPanelWindow(focusTab?: string): void {
+  const win = ensurePanelWindow();
+  if (!win.isVisible()) {
+    win.show();
+  }
+  if (win.isMinimized()) {
+    win.restore();
+  }
+  win.focus();
   if (focusTab) {
     // Defer the message until the renderer is ready — webContents.send is
     // dropped silently if the page hasn't finished loading.
-    if (panelWindow.webContents.isLoading()) {
-      panelWindow.webContents.once("did-finish-load", () => {
-        panelWindow?.webContents.send("app:open-settings", focusTab);
+    if (win.webContents.isLoading()) {
+      win.webContents.once("did-finish-load", () => {
+        sendToWindow(panelWindow, "app:open-settings", focusTab);
       });
     } else {
-      panelWindow.webContents.send("app:open-settings", focusTab);
+      sendToWindow(win, "app:open-settings", focusTab);
     }
   }
 }
 
 function togglePanelWindow(): void {
-  if (!panelWindow) {
+  if (!isUsableWindow(panelWindow)) {
     panelWindow = createPanelWindow();
+    panelWindow.show();
+    panelWindow.focus();
     return;
   }
   if (panelWindow.isVisible()) {
     panelWindow.hide();
   } else {
     panelWindow.show();
+    if (panelWindow.isMinimized()) {
+      panelWindow.restore();
+    }
     panelWindow.focus();
   }
 }
 
 app.on("second-instance", () => {
-  if (panelWindow) {
-    if (!panelWindow.isVisible()) {
-      panelWindow.show();
-    }
-    if (panelWindow.isMinimized()) {
-      panelWindow.restore();
-    }
-    panelWindow.focus();
+  if (isUsableWindow(panelWindow)) {
+    openPanelWindow();
   }
 });
 
@@ -257,7 +422,7 @@ async function captureScreen(): Promise<void> {
 
 function setWatching(next: boolean): void {
   companionWatching = next;
-  petWindow?.webContents.send("pet:watching-changed", companionWatching);
+  sendToWindow(petWindow, "pet:watching-changed", companionWatching);
 }
 
 // ---------------------------------------------------------------------------
@@ -306,6 +471,20 @@ async function buildContextMenu(): Promise<Menu> {
         }))
     : [{ label: "(无法连接后端)", enabled: false }];
 
+  const avatarSubmenu: MenuItemConstructorOptions[] = AVATAR_OPTIONS.map((option) => ({
+    label: option.label,
+    type: "radio" as const,
+    checked: desktopPrefs.avatar === option.id,
+    click: () => applyPrefsPatch({ avatar: option.id })
+  }));
+
+  const petVoiceSubmenu: MenuItemConstructorOptions[] = PET_VOICE_OPTIONS.map((option) => ({
+    label: option.label,
+    type: "radio" as const,
+    checked: desktopPrefs.petVoice === option.id,
+    click: () => applyPrefsPatch({ petVoice: option.id })
+  }));
+
   const template: MenuItemConstructorOptions[] = [
     { label: "打开控制台", click: () => openPanelWindow() },
     { type: "separator" },
@@ -316,17 +495,29 @@ async function buildContextMenu(): Promise<Menu> {
       click: () => setWatching(!companionWatching)
     },
     {
-      label: "桌宠开口说话",
+      label: "显示输入框",
+      click: () => {
+        const win = ensureChatWindow();
+        win.show();
+        win.moveTop();
+        win.focus();
+      }
+    },
+    {
+      label: "允许桌宠语音回复",
       type: "checkbox",
       checked: desktopPrefs.voiceEnabled,
       click: () => applyPrefsPatch({ voiceEnabled: !desktopPrefs.voiceEnabled })
     },
     {
-      label: "观察时也朗读",
+      label: "观察屏幕时朗读提醒",
       type: "checkbox",
       checked: desktopPrefs.observeSpeechEnabled,
       click: () => applyPrefsPatch({ observeSpeechEnabled: !desktopPrefs.observeSpeechEnabled })
     },
+    { type: "separator" },
+    { label: "切换形象 →", submenu: avatarSubmenu },
+    { label: "切换音色 →", submenu: petVoiceSubmenu },
     { type: "separator" },
     { label: "切换对话模型 →", submenu: providerSubmenu },
     { label: "切换视觉模型 →", submenu: visionSubmenu },
@@ -337,7 +528,7 @@ async function buildContextMenu(): Promise<Menu> {
         captureScreen().catch((error) => console.error(error));
       }
     },
-    { label: "设置...", click: () => openPanelWindow("general") },
+    { label: "设置...", click: () => openPanelWindow("pet") },
     { type: "separator" },
     { label: "退出应用", click: () => app.quit() }
   ];
@@ -346,7 +537,7 @@ async function buildContextMenu(): Promise<Menu> {
 
 async function showPetContextMenu(): Promise<void> {
   const menu = await buildContextMenu();
-  menu.popup({ window: petWindow ?? undefined });
+  menu.popup({ window: isUsableWindow(petWindow) ? petWindow : undefined });
 }
 
 // ---------------------------------------------------------------------------
@@ -356,6 +547,7 @@ async function showPetContextMenu(): Promise<void> {
 app.whenReady().then(() => {
   desktopPrefs = loadPrefs();
   petWindow = createPetWindow();
+  chatWindow = createChatWindow();
   panelWindow = createPanelWindow();
 
   // ---- Backend proxies -----------------------------------------------------
@@ -385,6 +577,10 @@ app.whenReady().then(() => {
   ipcMain.handle("app:prefs:update", async (_event, patch: Partial<DesktopPrefs>) =>
     applyPrefsPatch(patch)
   );
+  ipcMain.handle("app:panel-history:record", async (_event, entry: PanelHistoryEntry) =>
+    recordPanelHistoryEvent(entry)
+  );
+  ipcMain.handle("app:panel-history:list", async () => loadPanelHistoryEvents());
 
   // ---- Window controls -----------------------------------------------------
 
@@ -393,15 +589,31 @@ app.whenReady().then(() => {
     showPetContextMenu().catch((error) => console.error("context menu error:", error));
   });
   ipcMain.on("pet:set-watching", (_event, watching: boolean) => setWatching(watching));
+  ipcMain.on("chat:submit", (_event, text: string) => {
+    const message = String(text || "").trim();
+    if (!message) return;
+    const win = ensurePetWindow();
+    sendToWindow(chatWindow, "chat:busy-changed", true);
+    if (win.webContents.isLoading()) {
+      win.webContents.once("did-finish-load", () => {
+        sendToWindow(win, "pet:chat-submit", message);
+      });
+    } else {
+      sendToWindow(win, "pet:chat-submit", message);
+    }
+  });
+  ipcMain.on("chat:busy", (_event, busy: boolean) => {
+    sendToWindow(chatWindow, "chat:busy-changed", !!busy);
+  });
 
   ipcMain.on("pet:drag-start", (_event, point: Point) => {
-    if (!petWindow) return;
+    if (!isUsableWindow(petWindow)) return;
     const [x, y] = petWindow.getPosition();
     petDragState = { startMouse: point, startWindow: { x, y } };
   });
 
   ipcMain.on("pet:drag-move", (_event, point: Point) => {
-    if (!petWindow || !petDragState) return;
+    if (!isUsableWindow(petWindow) || !petDragState) return;
     const nextX = petDragState.startWindow.x + point.x - petDragState.startMouse.x;
     const nextY = petDragState.startWindow.y + point.y - petDragState.startMouse.y;
     petWindow.setPosition(Math.round(nextX), Math.round(nextY), false);
@@ -418,6 +630,7 @@ app.whenReady().then(() => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       petWindow = createPetWindow();
+      chatWindow = createChatWindow();
       panelWindow = createPanelWindow();
     }
   });

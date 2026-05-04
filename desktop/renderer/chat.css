@@ -1,0 +1,91 @@
+:root {
+  --line: #4b3a3a;
+  --muted: rgba(75, 58, 58, 0.55);
+  --pink: #ff95b3;
+  --pink-deep: #e76288;
+  --surface: rgba(255, 252, 248, 0.94);
+  --white: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+.chat-shell {
+  width: 300px;
+  height: 62px;
+  display: grid;
+  grid-template-columns: 18px 1fr 50px;
+  gap: 6px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid rgba(75, 58, 58, 0.14);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 8px 20px rgba(127, 76, 60, 0.14);
+  color: var(--line);
+  backdrop-filter: blur(8px);
+  -webkit-app-region: drag;
+}
+
+.drag-handle {
+  width: 14px;
+  height: 28px;
+  border-radius: 8px;
+  background:
+    radial-gradient(circle, var(--muted) 1.5px, transparent 2px) 0 2px / 7px 7px,
+    radial-gradient(circle, var(--muted) 1.5px, transparent 2px) 7px 2px / 7px 7px;
+  opacity: 0.7;
+}
+
+input,
+button {
+  height: 34px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  -webkit-app-region: no-drag;
+}
+
+input {
+  min-width: 0;
+  border: 1px solid rgba(75, 58, 58, 0.22);
+  padding: 0 9px;
+  color: var(--line);
+  background: var(--white);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--pink);
+  background: #fff8fb;
+}
+
+button {
+  border: 1px solid var(--pink-deep);
+  color: #fffdf8;
+  background: linear-gradient(180deg, var(--pink), var(--pink-deep));
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.05s;
+}
+
+button:hover {
+  filter: brightness(1.05);
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+input:disabled,
+button:disabled {
+  opacity: 0.62;
+}

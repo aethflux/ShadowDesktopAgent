@@ -14,42 +14,59 @@
 const petShell = document.getElementById("petShell");
 const bubble = document.getElementById("petBubble");
 const watchDot = document.getElementById("watchDot");
-const miniChat = document.getElementById("miniChat");
-const miniChatInput = document.getElementById("miniChatInput");
-const miniChatSend = document.getElementById("miniChatSend");
-const avatarSelect = document.getElementById("avatarSelect");
-const voiceSelect = document.getElementById("voiceSelect");
 
 const BACKEND_URL = "http://127.0.0.1:8787";
-const WATCH_SESSION_ID = "digital-twin-session";
-const CHAT_SESSION_ID = "desktop-session";
+const COMPANION_SESSION_ID = "pet-companion-session";
+const COMPANION_SESSION_TITLE = "桌宠陪伴";
+const COMPANION_HISTORY_RETENTION_MS = 5 * 60_000;
 const OBSERVE_INTERVAL_MS = 45_000;
 const AVATAR_CLASSES = ["avatar-streamer", "avatar-swordswoman", "avatar-cyber"];
-const AVATAR_STORAGE_KEY = "hoshino.avatar";
-const VOICE_STORAGE_KEY = "hoshino.voice";
+const AVATAR_OPTIONS = ["streamer", "swordswoman", "cyber"];
+const PET_VOICE_OPTIONS = ["warm-girl", "sweet-lady", "gentleman", "storyteller"];
 
-let selectedAvatar = localStorage.getItem(AVATAR_STORAGE_KEY) || "streamer";
-let selectedVoice = localStorage.getItem(VOICE_STORAGE_KEY) || "warm-girl";
+let selectedAvatar = "streamer";
+let selectedVoice = "warm-girl";
+let desktopPrefs = {
+  avatar: selectedAvatar,
+  petVoice: selectedVoice,
+  voiceEnabled: true,
+  observeSpeechEnabled: true,
+};
+let userTurnActive = false;
+let suppressObserveUntil = 0;
+let observeRunVersion = 0;
 
 function applyAvatar(value) {
-  selectedAvatar = ["streamer", "swordswoman", "cyber"].includes(value) ? value : "streamer";
+  selectedAvatar = AVATAR_OPTIONS.includes(value) ? value : "streamer";
   petShell?.classList.remove(...AVATAR_CLASSES);
   petShell?.classList.add(`avatar-${selectedAvatar}`);
-  if (avatarSelect) avatarSelect.value = selectedAvatar;
-  localStorage.setItem(AVATAR_STORAGE_KEY, selectedAvatar);
 }
 
 function applyVoice(value) {
-  selectedVoice = ["warm-girl", "sweet-lady", "gentleman", "storyteller"].includes(value) ? value : "warm-girl";
-  if (voiceSelect) voiceSelect.value = selectedVoice;
-  localStorage.setItem(VOICE_STORAGE_KEY, selectedVoice);
+  selectedVoice = PET_VOICE_OPTIONS.includes(value) ? value : "warm-girl";
 }
 
 applyAvatar(selectedAvatar);
 applyVoice(selectedVoice);
 
-avatarSelect?.addEventListener("change", () => applyAvatar(avatarSelect.value));
-voiceSelect?.addEventListener("change", () => applyVoice(voiceSelect.value));
+async function loadDesktopPrefs() {
+  try {
+    desktopPrefs = { ...desktopPrefs, ...(await window.bishoujo.desktopPrefs()) };
+    applyAvatar(desktopPrefs.avatar);
+    applyVoice(desktopPrefs.petVoice);
+  } catch (error) {
+    console.warn("[pet] failed to load desktop prefs", error);
+  }
+}
+
+window.bishoujo.onDesktopPrefsChanged?.((prefs) => {
+  desktopPrefs = { ...desktopPrefs, ...prefs };
+  applyAvatar(desktopPrefs.avatar);
+  applyVoice(desktopPrefs.petVoice);
+  if (!desktopPrefs.voiceEnabled || (!desktopPrefs.observeSpeechEnabled && currentSpeechSource === "observe")) {
+    stopSpeech();
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Agent state machine
@@ -138,7 +155,7 @@ function _engagementState() {
 }
 
 // ---------------------------------------------------------------------------
-// Pet movement (drag from anywhere except .mini-chat)
+// Pet movement
 // ---------------------------------------------------------------------------
 
 let dragStart = null;
@@ -206,6 +223,20 @@ function showBubble(text, sticky = false) {
   }
 }
 
+function recordCompanionHistory(role, text, meta = "") {
+  if (!text) return;
+  window.bishoujo.recordPanelHistory?.({
+    sessionId: COMPANION_SESSION_ID,
+    title: COMPANION_SESSION_TITLE,
+    fixed: true,
+    role,
+    text,
+    meta,
+    ts: Date.now(),
+    retentionMs: COMPANION_HISTORY_RETENTION_MS,
+  }).catch((error) => console.warn("[pet] failed to record panel history", error));
+}
+
 // ---------------------------------------------------------------------------
 // Speech — cloud audio first, browser speech synthesis as fallback
 // ---------------------------------------------------------------------------
@@ -220,7 +251,25 @@ function setTalking(active) {
 }
 
 let currentAudio = null;
+let currentSpeechSource = null;
 let browserVoices = [];
+
+function canSpeak(source = "chat") {
+  return desktopPrefs.voiceEnabled && (source !== "observe" || desktopPrefs.observeSpeechEnabled);
+}
+
+function stopSpeech() {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+    currentAudio = null;
+  }
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  currentSpeechSource = null;
+  setTalking(false);
+}
 
 function refreshBrowserVoices() {
   browserVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
@@ -242,24 +291,44 @@ function preferredBrowserVoice() {
   );
 }
 
-function speak(text) {
-  if (!text) return;
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio = null;
+function speechText(text) {
+  return String(text || "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/\[([^\]\n]+)\]\([^)]+\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/https?:\/\/\S+/gi, "链接")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function speak(text, source = "chat") {
+  const spoken = speechText(text);
+  if (!spoken) return;
+  if (!canSpeak(source)) {
+    stopSpeech();
+    return;
   }
-  window.speechSynthesis.cancel();
+  stopSpeech();
 
   if (window.speechSynthesis) {
-    const utter = new SpeechSynthesisUtterance(text);
+    currentSpeechSource = source;
+    const utter = new SpeechSynthesisUtterance(spoken);
     const voice = preferredBrowserVoice();
     if (voice) utter.voice = voice;
     utter.lang = "zh-CN";
     utter.rate = 1.0;
     utter.pitch = 1.08;
     utter.onstart = () => setTalking(true);
-    utter.onend = () => setTalking(false);
-    utter.onerror = () => setTalking(false);
+    utter.onend = () => {
+      currentSpeechSource = null;
+      setTalking(false);
+    };
+    utter.onerror = () => {
+      currentSpeechSource = null;
+      setTalking(false);
+    };
     window.speechSynthesis.speak(utter);
   }
 }
@@ -270,20 +339,24 @@ function _backendUrl(url) {
   return `${BACKEND_URL}${url}`;
 }
 
-function _playAudioUrl(url, fallbackText) {
-  const src = _backendUrl(url);
-  window.speechSynthesis.cancel();
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio = null;
+function _playAudioUrl(url, fallbackText, source = "chat") {
+  if (!canSpeak(source)) {
+    stopSpeech();
+    return;
   }
+  const src = _backendUrl(url);
+  stopSpeech();
   const audio = new Audio(src);
   currentAudio = audio;
+  currentSpeechSource = source;
   audio.preload = "auto";
   audio.onplay = () => setTalking(true);
   audio.onended = () => {
     setTalking(false);
-    if (currentAudio === audio) currentAudio = null;
+    if (currentAudio === audio) {
+      currentAudio = null;
+      currentSpeechSource = null;
+    }
   };
   audio.onerror = () => {
     setTalking(false);
@@ -292,24 +365,33 @@ function _playAudioUrl(url, fallbackText) {
       error: audio.error ? audio.error.code : null,
     });
     if (currentAudio === audio) currentAudio = null;
-    speak(fallbackText);
+    if (canSpeak(source)) speak(fallbackText, source);
   };
   console.log("[pet] playing cloud audio", src);
   audio.play().catch((error) => {
     console.warn("[pet] audio.play rejected, falling back to browser speech", error);
     if (currentAudio === audio) currentAudio = null;
-    speak(fallbackText);
+    if (canSpeak(source)) speak(fallbackText, source);
   });
 }
 
-async function say(text) {
-  if (!text) return;
-  const ttsResp = await window.bishoujo.tts({ text, voice: selectedVoice });
+async function say(text, { source = "chat" } = {}) {
+  const spoken = speechText(text);
+  if (!spoken) return;
+  if (!canSpeak(source)) {
+    stopSpeech();
+    return;
+  }
+  const ttsResp = await window.bishoujo.tts({ text: spoken, voice: selectedVoice });
+  if (!canSpeak(source)) {
+    stopSpeech();
+    return;
+  }
   console.log("[pet] tts response", ttsResp);
   if (ttsResp.audio_url) {
-    _playAudioUrl(ttsResp.audio_url, text);
+    _playAudioUrl(ttsResp.audio_url, spoken, source);
   } else {
-    speak(text);
+    speak(spoken, source);
   }
 }
 
@@ -320,15 +402,21 @@ async function say(text) {
 let observing = false;
 let observeTimer = null;
 
+function shouldSkipObservation(trigger) {
+  return userTurnActive || (trigger === "interval" && Date.now() < suppressObserveUntil);
+}
+
 async function observe(trigger = "interval") {
   if (observing) return;
   if (_isIdle() && trigger === "interval") return;
+  if (shouldSkipObservation(trigger)) return;
   observing = true;
+  const runVersion = ++observeRunVersion;
   // Watching is already sticky once enabled — no transient state change.
   try {
     const eng = _engagementState();
     const response = await window.bishoujo.observe({
-      session_id: WATCH_SESSION_ID,
+      session_id: COMPANION_SESSION_ID,
       trigger,
       focus: trigger === "manual"
         ? "请看看当前屏幕，然后像我的数字分身搭档一样自然地和我说一句。"
@@ -336,11 +424,25 @@ async function observe(trigger = "interval") {
       ...eng,
     });
 
+    if (runVersion !== observeRunVersion || userTurnActive || Date.now() < suppressObserveUntil) {
+      return;
+    }
     const text = response.reply || "我在旁边陪着你。";
-    const shouldSpeak = trigger === "manual" || response.should_speak || response.significance === "high";
+    const shouldSpeak = (
+      desktopPrefs.voiceEnabled &&
+      desktopPrefs.observeSpeechEnabled &&
+      (trigger === "manual" || response.should_speak || response.significance === "high")
+    );
+    if (text) {
+      recordCompanionHistory(
+        "assistant",
+        text,
+        `持续陪伴 · ${trigger} · ${response.significance || "medium"}`
+      );
+    }
     if (shouldSpeak && text) {
       showBubble(text.slice(0, 86));
-      await say(text);
+      await say(text, { source: "observe" });
     }
   } catch (error) {
     setState(STATE.ERROR, { revertAfter: 2400 });
@@ -350,14 +452,19 @@ async function observe(trigger = "interval") {
   }
 }
 
-miniChat?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const text = miniChatInput.value.trim();
+async function handlePetChat(text) {
+  text = String(text || "").trim();
   if (!text) return;
+  if (userTurnActive) {
+    window.bishoujo.setPetChatBusy?.(false);
+    return;
+  }
 
-  miniChatInput.value = "";
-  miniChatInput.disabled = true;
-  miniChatSend.disabled = true;
+  userTurnActive = true;
+  window.bishoujo.setPetChatBusy?.(true);
+  suppressObserveUntil = Date.now() + 60_000;
+  observeRunVersion++;
+  recordCompanionHistory("user", text, "桌宠输入");
 
   setState(STATE.THINKING, { sticky: true });
   showBubble("我在想...");
@@ -365,10 +472,12 @@ miniChat?.addEventListener("submit", async (event) => {
   try {
     const response = await window.bishoujo.chat({
       message: text,
-      session_id: CHAT_SESSION_ID,
+      session_id: COMPANION_SESSION_ID,
       attachments: [],
     });
     const reply = response.reply || "我在。";
+    const meta = `${response.trace?.active_agent || "agent"} | 桌宠输入`;
+    recordCompanionHistory("assistant", reply, meta);
 
     // If the agent invoked tools, briefly show the working sparkle state
     // before transitioning to the spoken reply.
@@ -382,16 +491,25 @@ miniChat?.addEventListener("submit", async (event) => {
     await new Promise((r) => setTimeout(r, 350));
 
     showBubble(reply.slice(0, 86));
-    await say(reply); // setTalking inside say() will set TALKING sticky
+    await say(reply, { source: "chat" }); // setTalking inside say() will set TALKING sticky
   } catch (error) {
     setState(STATE.ERROR, { revertAfter: 2800 });
     const message = error && error.message ? error.message : String(error);
     showBubble(`请求失败：${message}`, true);
+    recordCompanionHistory("assistant", `请求失败：${message}`, "桌宠输入 · error");
   } finally {
-    miniChatInput.disabled = false;
-    miniChatSend.disabled = false;
-    miniChatInput.focus();
+    userTurnActive = false;
+    window.bishoujo.setPetChatBusy?.(false);
+    suppressObserveUntil = Date.now() + 20_000;
   }
+}
+
+window.bishoujo.onPetChatSubmit?.((text) => {
+  handlePetChat(text).catch((error) => {
+    window.bishoujo.setPetChatBusy?.(false);
+    setState(STATE.ERROR, { revertAfter: 2800 });
+    showBubble(`请求失败：${error && error.message ? error.message : String(error)}`, true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -435,4 +553,9 @@ petShell?.addEventListener("dblclick", (event) => {
 // Idle entry — explicit so the pet starts in a known state
 // ---------------------------------------------------------------------------
 
+loadDesktopPrefs().then(() => {
+  if (!desktopPrefs.voiceEnabled) {
+    stopSpeech();
+  }
+});
 setState(STATE.IDLE);

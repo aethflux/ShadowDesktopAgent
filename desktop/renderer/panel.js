@@ -15,6 +15,9 @@
 
 const BACKEND_URL = "http://127.0.0.1:8787";
 const DEFAULT_SESSION_ID = "desktop-session";
+const COMPANION_SESSION_ID = "pet-companion-session";
+const COMPANION_SESSION_TITLE = "桌宠陪伴";
+const COMPANION_HISTORY_RETENTION_MS = 5 * 60_000;
 const SESSIONS_INDEX_KEY = "hoshino.panel.sessions.v2";
 const HISTORY_KEY_PREFIX = "hoshino.panel.history.";
 const HISTORY_LIMIT = 80;
@@ -77,28 +80,20 @@ function escapeHtml(text) {
     .replace(/'/g, "&#39;");
 }
 
-// Minimal, safe Markdown renderer: escape first, then apply transforms.
-function renderMarkdown(input) {
-  const escaped = escapeHtml(input ?? "");
-
-  const codeBlocks = [];
-  let intermediate = escaped.replace(/```([\s\S]*?)```/g, (_, body) => {
-    const idx = codeBlocks.length;
-    codeBlocks.push(body);
-    return ` CODE${idx} `;
+// Small safe Markdown renderer. It is intentionally limited, but covers the
+// structures the agent commonly emits: headings, lists, blockquotes, tables,
+// fenced code, inline code, bold/italic, and links. All user text is escaped
+// before we introduce the small allow-list of HTML tags.
+function renderInlineMarkdown(input) {
+  const codeSpans = [];
+  let text = String(input ?? "").replace(/`([^`\n]+)`/g, (_match, body) => {
+    const idx = codeSpans.length;
+    codeSpans.push(escapeHtml(body));
+    return `\u0000CODE${idx}\u0000`;
   });
 
-  const inlineCodes = [];
-  intermediate = intermediate.replace(/`([^`\n]+)`/g, (_, body) => {
-    const idx = inlineCodes.length;
-    inlineCodes.push(body);
-    return ` ICODE${idx} `;
-  });
-
-  intermediate = intermediate.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
-  intermediate = intermediate.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
-
-  intermediate = intermediate.replace(
+  text = escapeHtml(text);
+  text = text.replace(
     /\[([^\]\n]+)\]\(([^()\s]+)\)/g,
     (match, label, url) => {
       const safe = /^(https?:\/\/|\/|#)/i.test(url);
@@ -106,31 +101,191 @@ function renderMarkdown(input) {
       return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
     }
   );
+  text = text.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  text = text.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  text = text.replace(/\u0000CODE(\d+)\u0000/g, (_match, idx) => `<code>${codeSpans[Number(idx)]}</code>`);
+  return text;
+}
 
-  intermediate = intermediate.replace(/ ICODE(\d+) /g, (_, idx) => {
-    return `<code>${inlineCodes[Number(idx)]}</code>`;
-  });
-  intermediate = intermediate.replace(/ CODE(\d+) /g, (_, idx) => {
-    return `<pre><code>${codeBlocks[Number(idx)]}</code></pre>`;
-  });
+function splitTableRow(line) {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return trimmed.split("|").map((cell) => cell.trim());
+}
 
-  return intermediate.replace(/\n/g, "<br>");
+function isTableDivider(line) {
+  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+}
+
+function renderMarkdown(input) {
+  const lines = String(input ?? "").replace(/\r\n/g, "\n").split("\n");
+  const html = [];
+  let paragraph = [];
+  let listType = null;
+  let listItems = [];
+  let blockquote = [];
+  let inCode = false;
+  let codeLines = [];
+  let codeLang = "";
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    html.push(`<p>${paragraph.map(renderInlineMarkdown).join("<br>")}</p>`);
+    paragraph = [];
+  };
+
+  const flushList = () => {
+    if (!listType) return;
+    html.push(`<${listType}>${listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</${listType}>`);
+    listType = null;
+    listItems = [];
+  };
+
+  const flushBlockquote = () => {
+    if (!blockquote.length) return;
+    html.push(`<blockquote>${blockquote.map(renderInlineMarkdown).join("<br>")}</blockquote>`);
+    blockquote = [];
+  };
+
+  const flushOpenBlocks = () => {
+    flushParagraph();
+    flushList();
+    flushBlockquote();
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const fence = line.match(/^\s*```([\w-]*)\s*$/);
+    if (fence) {
+      if (inCode) {
+        html.push(
+          `<pre><code${codeLang ? ` class="language-${escapeHtml(codeLang)}"` : ""}>${escapeHtml(codeLines.join("\n"))}</code></pre>`
+        );
+        inCode = false;
+        codeLines = [];
+        codeLang = "";
+      } else {
+        flushOpenBlocks();
+        inCode = true;
+        codeLang = fence[1] || "";
+      }
+      continue;
+    }
+    if (inCode) {
+      codeLines.push(line);
+      continue;
+    }
+
+    if (!line.trim()) {
+      flushOpenBlocks();
+      continue;
+    }
+
+    const tableNext = lines[i + 1];
+    if (line.includes("|") && tableNext && isTableDivider(tableNext)) {
+      flushOpenBlocks();
+      const headers = splitTableRow(line);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].includes("|") && lines[i].trim()) {
+        rows.push(splitTableRow(lines[i]));
+        i += 1;
+      }
+      i -= 1;
+      html.push(
+        `<div class="md-table-wrap"><table><thead><tr>${headers
+          .map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`)
+          .join("")}</tr></thead><tbody>${rows
+          .map((row) => `<tr>${row.map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`).join("")}</tr>`)
+          .join("")}</tbody></table></div>`
+      );
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      flushOpenBlocks();
+      const level = heading[1].length;
+      html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    const quote = line.match(/^\s*>\s?(.*)$/);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      blockquote.push(quote[1]);
+      continue;
+    }
+
+    const unordered = line.match(/^\s*[-*]\s+(.+)$/);
+    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (unordered || ordered) {
+      flushParagraph();
+      flushBlockquote();
+      const nextType = ordered ? "ol" : "ul";
+      if (listType && listType !== nextType) {
+        flushList();
+      }
+      listType = nextType;
+      listItems.push((unordered || ordered)[1]);
+      continue;
+    }
+
+    flushList();
+    flushBlockquote();
+    paragraph.push(line);
+  }
+
+  if (inCode) {
+    html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+  }
+  flushOpenBlocks();
+  return html.join("");
 }
 
 // ---------------------------------------------------------------------------
 // Session storage
 // ---------------------------------------------------------------------------
 
+function companionSession() {
+  return {
+    id: COMPANION_SESSION_ID,
+    title: COMPANION_SESSION_TITLE,
+    fixed: true,
+    titleAuto: false,
+    lastUsed: Date.now(),
+    preview: "保留最近 5 分钟桌宠输出",
+  };
+}
+
+function normalizeSessions(items) {
+  const byId = new Map();
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || !item.id) continue;
+    byId.set(item.id, item);
+  }
+  const companion = { ...companionSession(), ...(byId.get(COMPANION_SESSION_ID) || {}) };
+  companion.title = COMPANION_SESSION_TITLE;
+  companion.fixed = true;
+  companion.titleAuto = false;
+  byId.set(COMPANION_SESSION_ID, companion);
+
+  if (!byId.has(DEFAULT_SESSION_ID)) {
+    byId.set(DEFAULT_SESSION_ID, { id: DEFAULT_SESSION_ID, title: "默认会话", lastUsed: Date.now() });
+  }
+  return [...byId.values()];
+}
+
 function loadSessions() {
   try {
     const raw = localStorage.getItem(SESSIONS_INDEX_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
-    if (Array.isArray(parsed) && parsed.length) return parsed;
+    if (Array.isArray(parsed) && parsed.length) return normalizeSessions(parsed);
   } catch {
     /* fall through */
   }
   // Bootstrap a default session for first-time users.
-  return [{ id: DEFAULT_SESSION_ID, title: "默认会话", lastUsed: Date.now() }];
+  return normalizeSessions([{ id: DEFAULT_SESSION_ID, title: "默认会话", lastUsed: Date.now() }]);
 }
 
 function saveSessions(sessions) {
@@ -145,12 +300,23 @@ function historyKey(sessionId) {
   return `${HISTORY_KEY_PREFIX}${sessionId}`;
 }
 
+function retentionForSession(sessionId) {
+  return sessionId === COMPANION_SESSION_ID ? COMPANION_HISTORY_RETENTION_MS : 0;
+}
+
+function pruneHistory(sessionId, items) {
+  const retention = retentionForSession(sessionId);
+  if (!retention) return items;
+  const cutoff = Date.now() - retention;
+  return items.filter((item) => Number(item.ts || 0) >= cutoff);
+}
+
 function loadHistory(sessionId) {
   try {
     const raw = localStorage.getItem(historyKey(sessionId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? pruneHistory(sessionId, parsed) : [];
   } catch {
     return [];
   }
@@ -158,7 +324,7 @@ function loadHistory(sessionId) {
 
 function saveHistory(sessionId, history) {
   try {
-    const trimmed = history.slice(-HISTORY_LIMIT);
+    const trimmed = pruneHistory(sessionId, history).slice(-HISTORY_LIMIT);
     localStorage.setItem(historyKey(sessionId), JSON.stringify(trimmed));
   } catch {
     /* drop silently */
@@ -173,13 +339,39 @@ function activeSession() {
   return sessions.find((s) => s.id === activeSessionId) || sessions[0];
 }
 
-function recordHistory(role, text, meta = "") {
-  history.push({ role, text, meta });
-  saveHistory(activeSessionId, history);
+function ensureSession(sessionId, { title = null, fixed = false } = {}) {
+  let session = sessions.find((s) => s.id === sessionId);
+  if (!session) {
+    session = {
+      id: sessionId,
+      title: title || `会话 ${sessions.length + 1}`,
+      titleAuto: !title,
+      fixed,
+      lastUsed: Date.now(),
+      preview: "",
+    };
+    sessions.push(session);
+  }
+  if (title) {
+    session.title = title;
+    session.titleAuto = false;
+  }
+  if (fixed) session.fixed = true;
+  saveSessions(sessions);
+  return session;
+}
+
+function recordHistoryForSession(sessionId, role, text, meta = "", options = {}) {
+  const session = ensureSession(sessionId, options);
+  const sessionHistory = loadHistory(sessionId);
+  const id = options.id || `${sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  if (sessionHistory.some((item) => item.id === id)) return;
+  sessionHistory.push({ id, role, text, meta, ts: options.ts || Date.now(), source: options.source || "" });
+  saveHistory(sessionId, sessionHistory);
+
   // Update session preview.
-  const session = activeSession();
   if (session) {
-    session.lastUsed = Date.now();
+    session.lastUsed = options.ts || Date.now();
     session.preview = text.slice(0, 40);
     if (session.title === "默认会话" || session.title.startsWith("会话")) {
       // First user message becomes a friendly title.
@@ -191,6 +383,56 @@ function recordHistory(role, text, meta = "") {
     saveSessions(sessions);
     renderSessions();
   }
+
+  if (sessionId === activeSessionId) {
+    history = loadHistory(activeSessionId);
+    reloadHistoryView();
+  }
+}
+
+function recordHistory(role, text, meta = "") {
+  recordHistoryForSession(activeSessionId, role, text, meta);
+}
+
+function importPanelHistoryEntry(entry) {
+  if (!entry || !entry.sessionId || !entry.text) return;
+  const retention = Number(entry.retentionMs || retentionForSession(entry.sessionId) || 0);
+  if (retention && Date.now() - Number(entry.ts || 0) > retention) return;
+  recordHistoryForSession(
+    entry.sessionId,
+    entry.role === "user" ? "user" : "assistant",
+    entry.text,
+    entry.meta || "",
+    {
+      id: entry.id,
+      ts: entry.ts || Date.now(),
+      title: entry.title,
+      fixed: !!entry.fixed,
+      source: "pet",
+    }
+  );
+}
+
+async function syncPanelHistoryEvents() {
+  try {
+    const events = await window.bishoujo.listPanelHistoryEvents?.();
+    for (const entry of events || []) {
+      importPanelHistoryEntry(entry);
+    }
+  } catch (error) {
+    console.warn("panel history sync failed", error);
+  }
+}
+
+function pruneRollingHistories() {
+  const before = history.length;
+  const companionHistory = loadHistory(COMPANION_SESSION_ID);
+  saveHistory(COMPANION_SESSION_ID, companionHistory);
+  if (activeSessionId === COMPANION_SESSION_ID) {
+    history = loadHistory(activeSessionId);
+    if (history.length !== before) reloadHistoryView();
+  }
+  renderSessions();
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +513,10 @@ function renderSessions() {
       text: "×",
       attrs: { type: "button", "aria-label": "删除会话" },
     });
+    if (session.fixed) {
+      deleteBtn.disabled = true;
+      deleteBtn.title = "固定会话不能删除";
+    }
 
     item.appendChild(titleEl);
     item.appendChild(previewEl);
@@ -296,8 +542,7 @@ function switchSession(id) {
   activeSessionId = id;
   history = loadHistory(activeSessionId);
   reloadHistoryView();
-  taskStatus.textContent = "Idle";
-  taskStatus.classList.remove("streaming");
+  setTaskStatus("idle");
   renderSessions();
   // Side panels reset — they're ephemeral and tied to the previous turn.
   renderTask({});
@@ -320,6 +565,9 @@ function createSession() {
 }
 
 function deleteSession(id) {
+  if (sessions.find((s) => s.id === id)?.fixed) {
+    return;
+  }
   // Block deleting the last remaining session — there must always be one.
   if (sessions.length <= 1) {
     return;
@@ -351,8 +599,84 @@ function summarizeTools(toolCalls) {
   return toolCalls.map((item) => item.name).join(", ");
 }
 
-function renderTask(task) {
-  taskStatus.textContent = task.status || "completed";
+function compactText(text, limit = 140) {
+  const value = String(text || "").replace(/\s+/g, " ").trim();
+  return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
+}
+
+function formatJson(value) {
+  if (value == null) return "{}";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function inferDisplayStatus(item = {}) {
+  const result = String(item.result || item.detail || "").toLowerCase();
+  if (
+    result.includes("blocked unsafe command") ||
+    result.startsWith("tool ") && result.includes(" blocked:") ||
+    result.includes("not allowlisted")
+  ) {
+    return "blocked";
+  }
+  if (
+    item.success === false ||
+    item.status === "failed" ||
+    result.includes("failed:") ||
+    result.startsWith("mcp tool error:") ||
+    result.includes("access denied") ||
+    result.includes("is not registered")
+  ) {
+    return "failed";
+  }
+  const exitMatches = [...result.matchAll(/\bexit=(\d+)\b/g)];
+  if (exitMatches.some((match) => Number(match[1]) !== 0)) return "failed";
+  return item.status || "completed";
+}
+
+function statusLabel(status) {
+  if (status === "failed") return "失败";
+  if (status === "blocked") return "已拦截";
+  if (status === "running") return "运行中";
+  if (status === "skipped") return "已跳过";
+  if (status === "idle") return "Idle";
+  return "完成";
+}
+
+function setTaskStatus(status) {
+  const normalized = status || "completed";
+  taskStatus.textContent = statusLabel(normalized);
+  taskStatus.dataset.status = normalized;
+  taskStatus.classList.toggle("streaming", normalized === "running");
+}
+
+function makeKv(label, value) {
+  return el("div", { className: "kv" }, [
+    el("span", { className: "kv-label", text: label }),
+    el("strong", { className: "kv-value", text: value == null || value === "" ? "none" : String(value) }),
+  ]);
+}
+
+function argsPreview(args = {}) {
+  if (!args || !Object.keys(args).length) return "无参数";
+  const preferred = ["command", "cwd", "path", "server_name", "session_id"];
+  const parts = [];
+  for (const key of preferred) {
+    if (args[key] !== undefined) parts.push(`${key}=${JSON.stringify(args[key])}`);
+  }
+  for (const [key, value] of Object.entries(args)) {
+    if (preferred.includes(key)) continue;
+    if (parts.length >= 3) break;
+    parts.push(`${key}=${JSON.stringify(value)}`);
+  }
+  return compactText(parts.join(" · "), 110);
+}
+
+function renderTask(task, trace = {}, memorySummary = "") {
+  setTaskStatus(task.status || "completed");
   clearChildren(taskContent);
 
   if (!task.title && !task.steps) {
@@ -360,36 +684,58 @@ function renderTask(task) {
     return;
   }
 
+  const status = task.status || "completed";
   taskContent.appendChild(el("p", { className: "task-title", text: task.title || "Untitled task" }));
-  taskContent.appendChild(
-    el("p", {
-      className: "meta-text",
-      text: `${task.owner || "unknown-agent"} · ${task.step_count || 0} steps`,
-    })
-  );
+  taskContent.appendChild(el("p", { className: "meta-text", text: task.reply_preview ? `回复预览：${task.reply_preview}` : "" }));
 
-  const meta = el("div", { className: "task-meta" }, [
-    el("span", { className: "chip", text: task.owner || "agent" }),
-    el("span", { className: "chip", text: task.status || "completed" }),
+  const overview = el("div", { className: "run-overview" }, [
+    makeKv("状态", statusLabel(status)),
+    makeKv("执行者", task.owner || trace.active_agent || "unknown-agent"),
+    makeKv("步骤数", String(task.step_count || (task.steps || []).length || 0)),
+    makeKv("工具数", String((trace.tool_calls || []).length)),
   ]);
-  taskContent.appendChild(meta);
+  taskContent.appendChild(overview);
+
+  if (trace.reasoning || trace.delegated_to || trace.active_agent) {
+    const route = el("details", { className: "run-section", attrs: { open: "" } }, [
+      el("summary", { text: "路由与决策" }),
+      el("div", { className: "run-overview compact" }, [
+        makeKv("active_agent", trace.active_agent || task.owner || "unknown"),
+        makeKv("delegated_to", trace.delegated_to || task.owner || "unknown"),
+      ]),
+      el("pre", { className: "run-pre", text: trace.reasoning || "没有路由说明。" }),
+    ]);
+    taskContent.appendChild(route);
+  }
+
+  if (memorySummary) {
+    taskContent.appendChild(
+      el("details", { className: "run-section" }, [
+        el("summary", { text: "记忆摘要" }),
+        el("pre", { className: "run-pre", text: memorySummary }),
+      ])
+    );
+  }
 
   const steps = el("div", { className: "task-steps" });
-  for (const step of task.steps || []) {
+  (task.steps || []).forEach((step, index) => {
+    const stepStatus = inferDisplayStatus(step);
+    const args = step.args || trace.tool_calls?.[index]?.args || {};
     const head = el("div", { className: "step-head" }, [
-      el("strong", { text: step.title || "" }),
+      el("strong", { text: `${index + 1}. ${step.title || ""}` }),
       el("span", {
-        className: `step-status ${step.status === "failed" ? "failed" : ""}`,
-        text: step.status || "",
+        className: `step-status ${stepStatus}`,
+        text: statusLabel(stepStatus),
       }),
     ]);
     steps.appendChild(
       el("article", { className: "step" }, [
         head,
-        el("p", { className: "step-detail", text: step.detail || "" }),
+        el("p", { className: "step-args", text: argsPreview(args) }),
+        el("p", { className: "step-detail", text: compactText(step.detail || "", 220) }),
       ])
     );
-  }
+  });
   taskContent.appendChild(steps);
 }
 
@@ -400,19 +746,23 @@ function renderTimeline(toolCalls) {
     return;
   }
   toolCalls.forEach((item, index) => {
-    const head = el("div", { className: "timeline-head" }, [
+    const status = inferDisplayStatus(item);
+    const detail = el("details", { className: `timeline-item tool-${status}` });
+    if (index === 0) detail.open = true;
+    const summary = el("summary", { className: "timeline-head" }, [
       el("strong", { text: `${index + 1}. ${item.name}` }),
       el("span", {
-        className: `chip${item.success === false ? " failed" : ""}`,
-        text: item.success === false ? "failed" : "tool",
+        className: `chip ${status}`,
+        text: statusLabel(status),
       }),
     ]);
-    timelineEl.appendChild(
-      el("article", { className: "timeline-item" }, [
-        head,
-        el("p", { className: "timeline-detail", text: item.result || "" }),
-      ])
-    );
+    detail.appendChild(summary);
+    detail.appendChild(el("p", { className: "tool-preview", text: argsPreview(item.args || {}) }));
+    detail.appendChild(el("div", { className: "tool-block-title", text: "调用参数" }));
+    detail.appendChild(el("pre", { className: "tool-pre", text: formatJson(item.args || {}) }));
+    detail.appendChild(el("div", { className: "tool-block-title", text: "返回结果" }));
+    detail.appendChild(el("pre", { className: "tool-pre", text: item.result || "(empty)" }));
+    timelineEl.appendChild(detail);
   });
 }
 
@@ -561,8 +911,7 @@ composer.addEventListener("submit", async (event) => {
 
   appendMessage("user", text);
   recordHistory("user", text);
-  taskStatus.textContent = "running";
-  taskStatus.classList.add("streaming");
+  setTaskStatus("running");
   voiceBtn.disabled = true;
   composer.querySelector("button[type='submit']").disabled = true;
 
@@ -587,8 +936,7 @@ composer.addEventListener("submit", async (event) => {
     messageInput.value = "";
     imageInput.value = "";
   } catch (error) {
-    taskStatus.textContent = "failed";
-    taskStatus.classList.remove("streaming");
+    setTaskStatus("failed");
     const reason = error && error.message ? error.message : String(error);
     appendMessage("assistant", `请求失败：${reason}`);
     recordHistory("assistant", `请求失败：${reason}`);
@@ -612,7 +960,7 @@ async function runOneShot(payload) {
   appendMessage("assistant", response.reply, meta);
   recordHistory("assistant", response.reply, meta);
 
-  renderTask(response.task || {});
+  renderTask(response.task || {}, response.trace || {}, response.memory_summary || "");
   renderTimeline(response.trace.tool_calls || []);
   renderArtifacts(response.artifacts || []);
 }
@@ -650,7 +998,7 @@ async function runStreaming(payload) {
         const meta = `${activeAgent || data?.trace?.active_agent || "agent"} | tools: ${summarizeTools(data?.trace?.tool_calls || [])}`;
         finalizeStreamingMessage(assistantNode, meta);
         recordHistory("assistant", assistantText, meta);
-        renderTask(data?.task || {});
+        renderTask(data?.task || {}, data?.trace || {}, data?.memory_summary || "");
         renderTimeline(data?.trace?.tool_calls || toolCalls);
         renderArtifacts(data?.artifacts || []);
       } else if (event === "error") {
@@ -722,6 +1070,13 @@ voiceBtn.addEventListener("click", () => {
 
 renderSessions();
 reloadHistoryView();
+window.bishoujo.onPanelHistoryEvent?.((entry) => importPanelHistoryEntry(entry));
+syncPanelHistoryEvents().then(() => {
+  history = loadHistory(activeSessionId);
+  reloadHistoryView();
+});
+pruneRollingHistories();
+setInterval(pruneRollingHistories, 30_000);
 loadCapabilities().catch((error) => {
   appendMessage("assistant", `能力加载失败：${error.message}`);
 });
@@ -733,9 +1088,24 @@ setInterval(refreshReady, 30_000);
 // ===========================================================================
 
 let settingsState = null;        // last-loaded backend snapshot
+let desktopPrefsState = null;    // last-loaded Electron desktop preferences
 let providerListing = null;      // /api/settings/providers result
 let pendingPatch = {};           // unsaved field deltas
+let pendingDesktopPatch = {};    // unsaved desktop preference deltas
 let activeTab = "general";
+
+const DESKTOP_PREF_KEYS = new Set(["avatar", "petVoice", "voiceEnabled", "observeSpeechEnabled"]);
+const PET_AVATAR_OPTIONS = [
+  { value: "streamer", label: "虚拟主播" },
+  { value: "swordswoman", label: "见习剑士" },
+  { value: "cyber", label: "电子搭档" },
+];
+const PET_VOICE_OPTIONS = [
+  { value: "warm-girl", label: "清亮女声" },
+  { value: "sweet-lady", label: "甜美女声" },
+  { value: "gentleman", label: "青年男声" },
+  { value: "storyteller", label: "旁白男声" },
+];
 
 function setSettingsStatus(text, kind = "") {
   if (!settingsStatus) return;
@@ -754,6 +1124,7 @@ function openSettings(focusTab) {
 function closeSettings() {
   settingsBackdrop.hidden = true;
   pendingPatch = {};
+  pendingDesktopPatch = {};
   setSettingsStatus("");
 }
 
@@ -782,6 +1153,12 @@ settingsSave?.addEventListener("click", () => saveSettings());
 
 // The pet's right-click menu can deep-link into a specific tab.
 window.bishoujo.onOpenSettings?.((tab) => openSettings(tab || "general"));
+window.bishoujo.onDesktopPrefsChanged?.((prefs) => {
+  desktopPrefsState = { ...(desktopPrefsState || {}), ...prefs };
+  if (!settingsBackdrop?.hidden && activeTab === "pet") {
+    renderSettingsBody();
+  }
+});
 
 function describeError(error, action) {
   const raw = error?.message || String(error);
@@ -815,13 +1192,16 @@ function renderConnectionError(message) {
 async function reloadSettings() {
   setSettingsStatus("正在加载设置...");
   try {
-    const [agent, providers] = await Promise.all([
+    const [agent, providers, desktopPrefs] = await Promise.all([
       window.bishoujo.agentSettings(),
       window.bishoujo.listProviders(),
+      window.bishoujo.desktopPrefs(),
     ]);
     settingsState = { ...agent };
+    desktopPrefsState = { ...desktopPrefs };
     providerListing = providers;
     pendingPatch = {};
+    pendingDesktopPatch = {};
     renderSettingsBody();
     setSettingsStatus("已加载", "ok");
     setTimeout(() => setSettingsStatus(""), 1500);
@@ -833,15 +1213,26 @@ async function reloadSettings() {
 }
 
 async function saveSettings() {
-  if (!Object.keys(pendingPatch).length) {
+  const agentPatch = { ...pendingPatch };
+  const desktopPatch = { ...pendingDesktopPatch };
+  if (!Object.keys(agentPatch).length && !Object.keys(desktopPatch).length) {
     setSettingsStatus("没有要保存的改动");
     return;
   }
   setSettingsStatus("正在保存...");
   try {
-    const updated = await window.bishoujo.updateAgentSettings(pendingPatch);
-    settingsState = { ...updated };
+    const [updatedAgent, updatedDesktop] = await Promise.all([
+      Object.keys(agentPatch).length
+        ? window.bishoujo.updateAgentSettings(agentPatch)
+        : Promise.resolve(settingsState),
+      Object.keys(desktopPatch).length
+        ? window.bishoujo.updateDesktopPrefs(desktopPatch)
+        : Promise.resolve(desktopPrefsState),
+    ]);
+    settingsState = { ...updatedAgent };
+    desktopPrefsState = { ...updatedDesktop };
     pendingPatch = {};
+    pendingDesktopPatch = {};
     renderSettingsBody();
     refreshReady();
     setSettingsStatus("已保存", "ok");
@@ -852,19 +1243,26 @@ async function saveSettings() {
 }
 
 function effectiveValue(key) {
+  if (DESKTOP_PREF_KEYS.has(key)) {
+    return key in pendingDesktopPatch ? pendingDesktopPatch[key] : desktopPrefsState?.[key];
+  }
   return key in pendingPatch ? pendingPatch[key] : settingsState?.[key];
 }
 
 function setPending(key, value) {
-  if (settingsState && settingsState[key] === value) {
-    delete pendingPatch[key];
+  const isDesktopPref = DESKTOP_PREF_KEYS.has(key);
+  const base = isDesktopPref ? desktopPrefsState : settingsState;
+  const patch = isDesktopPref ? pendingDesktopPatch : pendingPatch;
+  if (base && base[key] === value) {
+    delete patch[key];
   } else {
-    pendingPatch[key] = value;
+    patch[key] = value;
   }
   // Update the dirty indicator without re-rendering the whole tab —
   // re-rendering would steal focus from the input the user is editing.
-  if (Object.keys(pendingPatch).length) {
-    setSettingsStatus(`有 ${Object.keys(pendingPatch).length} 项未保存`, "dirty");
+  const dirtyCount = Object.keys(pendingPatch).length + Object.keys(pendingDesktopPatch).length;
+  if (dirtyCount) {
+    setSettingsStatus(`有 ${dirtyCount} 项未保存`, "dirty");
   } else {
     setSettingsStatus("");
   }
@@ -964,6 +1362,7 @@ function renderSettingsBody() {
     return;
   }
   if (activeTab === "general") renderGeneralTab();
+  else if (activeTab === "pet") renderPetTab();
   else if (activeTab === "voice") renderVoiceTab();
   else if (activeTab === "memory") renderMemoryTab();
   else renderAboutTab();
@@ -993,6 +1392,19 @@ function renderGeneralTab() {
     textField("最大重试次数", "5xx / 429 / 网络错误重试上限。", "model_max_retries", { type: "number" }),
     textField("重试退避基准 (秒)", "实际等待按指数增长。", "model_retry_backoff_seconds", { type: "number" }),
     textField("Anthropic max_tokens", "Anthropic 单轮回复 token 上限。", "anthropic_max_tokens", { type: "number" }),
+  ]);
+  settingsBody.appendChild(groups);
+}
+
+function renderPetTab() {
+  const groups = el("div", { className: "settings-section" }, [
+    el("h3", { text: "桌宠外观" }),
+    selectField("形象", "也可以在桌宠右键菜单里快速切换。", "avatar", PET_AVATAR_OPTIONS),
+    selectField("桌宠音色", "控制桌宠气泡回复使用的 TTS 音色。", "petVoice", PET_VOICE_OPTIONS),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "桌面说话行为" }),
+    toggleField("允许桌宠语音回复", "关闭后桌宠仍会显示气泡和记录对话，但不播放语音。", "voiceEnabled"),
+    toggleField("观察屏幕时朗读提醒", "关闭后持续陪伴只记录和显示重要观察，不主动读出来。", "observeSpeechEnabled"),
   ]);
   settingsBody.appendChild(groups);
 }
@@ -1065,6 +1477,7 @@ function renderAboutTab() {
     `Provider: ${settingsState.provider} → ${settingsState.model}`,
     `Vision:   ${settingsState.vision_provider} → ${settingsState.vision_model}`,
     `Edge TTS: ${settingsState.enable_edge_tts ? "on" : "off"} (${settingsState.edge_tts_voice})`,
+    `Pet:      ${desktopPrefsState?.avatar || "streamer"} · ${desktopPrefsState?.petVoice || "warm-girl"} · voice ${desktopPrefsState?.voiceEnabled ? "on" : "off"}`,
     `Memory:   semantic ${settingsState.enable_semantic_memory ? "on" : "off"} · top-k ${settingsState.semantic_top_k}`,
     `Rate limit: ${settingsState.rate_limit_capacity} tokens @ ${settingsState.rate_limit_refill_per_second}/s`,
   ];
