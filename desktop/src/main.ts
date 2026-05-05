@@ -60,6 +60,10 @@ const PET_VOICE_OPTIONS = [
   { id: "storyteller", label: "旁白男声" }
 ];
 
+const CHAT_WINDOW_WIDTH = 300;
+const CHAT_WINDOW_HEIGHT = 62;
+const WINDOW_MARGIN = 24;
+
 let petWindow: BrowserWindow | null = null;
 let chatWindow: BrowserWindow | null = null;
 let panelWindow: BrowserWindow | null = null;
@@ -228,15 +232,42 @@ function createPetWindow(): BrowserWindow {
   return win;
 }
 
+function clampToRange(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function chatHomePosition(): Point {
+  const petBounds = isUsableWindow(petWindow) ? petWindow.getBounds() : null;
+  const display = petBounds
+    ? screen.getDisplayMatching(petBounds).workArea
+    : screen.getPrimaryDisplay().workArea;
+  const preferredX = petBounds
+    ? petBounds.x + Math.round((petBounds.width - CHAT_WINDOW_WIDTH) / 2)
+    : display.x + display.width - CHAT_WINDOW_WIDTH - WINDOW_MARGIN;
+  const preferredY = petBounds
+    ? petBounds.y + petBounds.height + 8
+    : display.y + display.height - CHAT_WINDOW_HEIGHT - WINDOW_MARGIN;
+  return {
+    x: clampToRange(
+      preferredX,
+      display.x + WINDOW_MARGIN,
+      display.x + display.width - CHAT_WINDOW_WIDTH - WINDOW_MARGIN
+    ),
+    y: clampToRange(
+      preferredY,
+      display.y + WINDOW_MARGIN,
+      display.y + display.height - CHAT_WINDOW_HEIGHT - WINDOW_MARGIN
+    )
+  };
+}
+
 function createChatWindow(): BrowserWindow {
-  const display = screen.getPrimaryDisplay().workAreaSize;
-  const width = 300;
-  const height = 62;
+  const position = chatHomePosition();
   const win = new BrowserWindow({
-    width,
-    height,
-    x: display.width - width - 24,
-    y: display.height - height - 40,
+    width: CHAT_WINDOW_WIDTH,
+    height: CHAT_WINDOW_HEIGHT,
+    x: position.x,
+    y: position.y,
     frame: false,
     transparent: true,
     resizable: false,
@@ -305,6 +336,18 @@ function ensureChatWindow(): BrowserWindow {
     chatWindow = createChatWindow();
   }
   return chatWindow;
+}
+
+function recoverChatWindow(): void {
+  const win = ensureChatWindow();
+  const position = chatHomePosition();
+  win.setPosition(position.x, position.y, false);
+  if (win.isMinimized()) {
+    win.restore();
+  }
+  win.show();
+  win.moveTop();
+  win.focus();
 }
 
 function sendToWindow(win: BrowserWindow | null, channel: string, ...args: unknown[]): void {
@@ -495,13 +538,8 @@ async function buildContextMenu(): Promise<Menu> {
       click: () => setWatching(!companionWatching)
     },
     {
-      label: "显示输入框",
-      click: () => {
-        const win = ensureChatWindow();
-        win.show();
-        win.moveTop();
-        win.focus();
-      }
+      label: "显示/找回输入框",
+      click: () => recoverChatWindow()
     },
     {
       label: "允许桌宠语音回复",
