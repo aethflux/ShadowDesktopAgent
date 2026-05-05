@@ -12,3 +12,6 @@ artifacts/
 .claude/
 .vscode/
 PROJECT_BRIEF.md
+agent-core/Dockerfile
+agent-core/docker-compose*.yml
+agent-core/.dockerignore

@@ -1544,8 +1544,8 @@ function fieldGroup(label, hint, child) {
   return group;
 }
 
-function toggleField(label, hint, key) {
-  const wrapper = el("div", { className: "field field-toggle" });
+function toggleField(label, hint, key, { disabled = false, onChange = null } = {}) {
+  const wrapper = el("div", { className: `field field-toggle${disabled ? " disabled" : ""}` });
   const labelEl = el("div", { className: "field-toggle-text" }, [
     el("span", { className: "field-label", text: label }),
     hint ? el("span", { className: "field-hint", text: hint }) : null,
@@ -1554,7 +1554,11 @@ function toggleField(label, hint, key) {
   const input = document.createElement("input");
   input.type = "checkbox";
   input.checked = !!effectiveValue(key);
-  input.addEventListener("change", () => setPending(key, input.checked));
+  input.disabled = disabled;
+  input.addEventListener("change", () => {
+    setPending(key, input.checked);
+    if (onChange) onChange(input.checked);
+  });
   const slider = el("span", { className: "slider" });
   sw.appendChild(input);
   sw.appendChild(slider);
@@ -1563,7 +1567,7 @@ function toggleField(label, hint, key) {
   return wrapper;
 }
 
-function selectField(label, hint, key, options) {
+function selectField(label, hint, key, options, { onChange = null } = {}) {
   const select = document.createElement("select");
   for (const opt of options) {
     const o = document.createElement("option");
@@ -1573,7 +1577,10 @@ function selectField(label, hint, key, options) {
     select.appendChild(o);
   }
   select.value = String(effectiveValue(key) ?? "");
-  select.addEventListener("change", () => setPending(key, select.value));
+  select.addEventListener("change", () => {
+    setPending(key, select.value);
+    if (onChange) onChange(select.value);
+  });
   return fieldGroup(label, hint, select);
 }
 
@@ -1637,39 +1644,121 @@ function providerOptions(filter = () => true) {
   if (!providerListing) return [{ value: "", label: "(provider 列表加载中)" }];
   return providerListing.providers.filter(filter).map((p) => ({
     value: p.id,
-    label: `${p.display_name}${p.configured ? "" : "  (未配置 API key)"}`,
+    label: `${p.display_name} · ${p.configured ? "已配置" : "未配置 API key"}`,
     disabled: !p.configured,
   }));
 }
 
+function providerById(providerId) {
+  return providerListing?.providers?.find((p) => p.id === providerId) || null;
+}
+
+function providerDisplay(providerId) {
+  return providerById(providerId)?.display_name || providerId || "未选择";
+}
+
+function providerDefaultModel(providerId) {
+  return providerById(providerId)?.default_model || "";
+}
+
+function modelFieldForProvider(providerId) {
+  return {
+    openai: "openai_model",
+    anthropic: "anthropic_model",
+    vllm: "vllm_model",
+    minimax: "minimax_model",
+    modelscope: "modelscope_model",
+  }[providerId] || "model";
+}
+
+function settingsSummaryCard(rows) {
+  return el("div", { className: "settings-summary-card" }, rows.map((row) =>
+    el("div", { className: "settings-summary-row" }, [
+      el("span", { text: row.label }),
+      el("strong", { text: row.value || "未设置" }),
+    ])
+  ));
+}
+
 function renderGeneralTab() {
+  const selectedProvider = effectiveValue("provider") || settingsState.provider || "minimax";
+  const selectedVisionProvider = effectiveValue("vision_provider") || settingsState.vision_provider || "modelscope";
+  const chatModelKey = modelFieldForProvider(selectedProvider);
+  const chatDefaultModel = providerDefaultModel(selectedProvider);
   const groups = el("div", { className: "settings-section" }, [
-    el("h3", { text: "对话模型" }),
-    selectField("当前 Provider", "切换后立即生效，所有对话/分析都走新 provider。", "provider", providerOptions()),
-    textField("当前 model（覆盖 provider 默认值）", "留空则使用各 provider 默认模型。", "model"),
+    el("h3", { text: "当前模型" }),
+    settingsSummaryCard([
+      {
+        label: "对话与工具调用",
+        value: `${providerDisplay(selectedProvider)} / ${effectiveValue(chatModelKey) || chatDefaultModel || settingsState.model}`,
+      },
+      {
+        label: "屏幕观察与图片理解",
+        value: `${providerDisplay(selectedVisionProvider)} / ${effectiveValue("vision_model") || providerDefaultModel(selectedVisionProvider)}`,
+      },
+    ]),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "对话与任务模型" }),
+    selectField(
+      "模型服务",
+      "控制普通聊天、任务规划和工具调用时使用的主模型。",
+      "provider",
+      providerOptions(),
+      { onChange: () => renderSettingsBody() },
+    ),
+    textField(
+      "模型 ID",
+      chatDefaultModel
+        ? `留空则使用 ${providerDisplay(selectedProvider)} 的默认模型：${chatDefaultModel}`
+        : "填写当前模型服务支持的模型 ID。",
+      chatModelKey,
+    ),
     el("div", { className: "settings-divider" }),
     el("h3", { text: "视觉模型" }),
-    selectField("视觉 Provider", "用于屏幕观察、图片理解。", "vision_provider", providerOptions((p) => p.supports_vision)),
-    textField("视觉 model id", "例如 Qwen/Qwen3-VL-8B-Instruct。", "vision_model"),
+    selectField(
+      "视觉服务",
+      "控制截图分析、屏幕观察和图片理解。",
+      "vision_provider",
+      providerOptions((p) => p.supports_vision),
+      { onChange: () => renderSettingsBody() },
+    ),
+    textField(
+      "视觉模型 ID",
+      "建议使用支持图片输入的模型，例如 Qwen/Qwen3-VL-8B-Instruct。",
+      "vision_model",
+    ),
     el("div", { className: "settings-divider" }),
-    el("h3", { text: "可靠性" }),
-    toggleField("Anthropic Prompt Caching", "对屏幕观察等长 prompt 节省 token。", "enable_prompt_cache"),
-    textField("最大重试次数", "5xx / 429 / 网络错误重试上限。", "model_max_retries", { type: "number" }),
-    textField("重试退避基准 (秒)", "实际等待按指数增长。", "model_retry_backoff_seconds", { type: "number" }),
-    textField("Anthropic max_tokens", "Anthropic 单轮回复 token 上限。", "anthropic_max_tokens", { type: "number" }),
+    el("h3", { text: "稳定性" }),
+    toggleField("启用 Prompt 缓存", "主要用于 Anthropic；其它服务会按自身缓存策略处理。", "enable_prompt_cache"),
+    textField("失败重试次数", "遇到 5xx、429 或网络错误时最多重试几次。", "model_max_retries", { type: "number" }),
+    textField("重试间隔基准（秒）", "实际等待时间会按指数退避增长。", "model_retry_backoff_seconds", { type: "number" }),
+    textField("Anthropic 回复上限", "只影响 Anthropic 模型的 max_tokens。", "anthropic_max_tokens", { type: "number" }),
   ]);
   settingsBody.appendChild(groups);
 }
 
 function renderPetTab() {
+  const voiceEnabled = !!effectiveValue("voiceEnabled");
   const groups = el("div", { className: "settings-section" }, [
     el("h3", { text: "桌宠外观" }),
     selectField("形象", "也可以在桌宠右键菜单里快速切换。", "avatar", PET_AVATAR_OPTIONS),
     selectField("桌宠音色", "控制桌宠气泡回复使用的 TTS 音色。", "petVoice", PET_VOICE_OPTIONS),
     el("div", { className: "settings-divider" }),
     el("h3", { text: "桌面说话行为" }),
-    toggleField("允许桌宠语音回复", "关闭后桌宠仍会显示气泡和记录对话，但不播放语音。", "voiceEnabled"),
-    toggleField("观察屏幕时朗读提醒", "关闭后持续陪伴只记录和显示重要观察，不主动读出来。", "observeSpeechEnabled"),
+    toggleField(
+      "桌宠语音总开关",
+      "关闭后桌宠仍会显示气泡和记录对话，但不会播放任何语音。",
+      "voiceEnabled",
+      { onChange: () => renderSettingsBody() },
+    ),
+    toggleField(
+      "持续陪伴时朗读观察结果",
+      voiceEnabled
+        ? "只控制屏幕观察产生的提醒。关闭后，主动聊天仍可语音回复。"
+        : "语音总开关关闭时，此项不会生效。",
+      "observeSpeechEnabled",
+      { disabled: !voiceEnabled },
+    ),
   ]);
   settingsBody.appendChild(groups);
 }

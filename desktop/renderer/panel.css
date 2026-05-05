@@ -1048,6 +1048,36 @@ button:disabled {
   margin: 4px 0 0;
 }
 
+.settings-summary-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.settings-summary-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.settings-summary-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-summary-row strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-divider {
   height: 1px;
   background: var(--line);
@@ -1099,6 +1129,10 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+}
+
+.field-toggle.disabled {
+  opacity: 0.58;
 }
 
 .field-toggle-text {
@@ -1154,6 +1188,11 @@ button:disabled {
 
 .switch input:focus-visible + .slider {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.28);
+}
+
+.switch input:disabled + .slider {
+  background: #e2e6ee;
+  cursor: not-allowed;
 }
 
 .field-slider {
