@@ -45,6 +45,22 @@ const settingsBody = document.getElementById("settingsBody");
 const settingsRefresh = document.getElementById("settingsRefresh");
 const settingsSave = document.getElementById("settingsSave");
 const settingsStatus = document.getElementById("settingsStatus");
+const permissionBackdrop = document.getElementById("permissionBackdrop");
+const permissionReason = document.getElementById("permissionReason");
+const permissionPath = document.getElementById("permissionPath");
+const permissionTip = document.getElementById("permissionTip");
+const permissionCountdown = document.getElementById("permissionCountdown");
+const permissionDeny = document.getElementById("permissionDeny");
+const permissionOnce = document.getElementById("permissionOnce");
+const permissionSession = document.getElementById("permissionSession");
+const permissionAlways = document.getElementById("permissionAlways");
+
+// Module-scope state for the active permission request: which request_id is
+// awaiting decision and the countdown interval handle. Only one can be open
+// at a time; subsequent requests are queued (we just overwrite the dialog
+// since the broker won't send a new request_id until the previous one resolved).
+let activePermissionRequestId = null;
+let permissionCountdownTimer = null;
 
 // ---------------------------------------------------------------------------
 // Safe DOM helpers
@@ -901,6 +917,82 @@ async function streamChat(payload, { onEvent, signal } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Permission request dialog
+// ---------------------------------------------------------------------------
+
+// Show the dialog, prefill it with the broker's request, and start a visible
+// countdown so the user knows how long they have. Returns immediately — the
+// decision happens via button clicks which POST to /api/permissions/decide.
+function openPermissionDialog(data) {
+  if (!permissionBackdrop || !data?.request_id) return;
+  activePermissionRequestId = data.request_id;
+  permissionReason.textContent = data.reason || "Hoshino 想访问一个目录";
+  permissionPath.textContent = data.path || "(unknown path)";
+  permissionTip.textContent = data.tool_name
+    ? `工具：${data.tool_name}。如果这是你信任的目录，可以选择允许；否则建议拒绝。`
+    : "如果这是你信任的目录，可以选择允许；否则建议拒绝。";
+
+  const totalSeconds = Math.max(5, Number(data.timeout_seconds) || 60);
+  let remaining = totalSeconds;
+  const tick = () => {
+    if (remaining <= 0) {
+      permissionCountdown.textContent = "已超时，将自动按拒绝处理。";
+      stopPermissionCountdown();
+      // Don't auto-close — let the server's deny take effect; but reset state
+      // so a new request can replace this one.
+      return;
+    }
+    permissionCountdown.textContent = `${remaining} 秒后超时（按拒绝处理）`;
+    remaining -= 1;
+  };
+  stopPermissionCountdown();
+  tick();
+  permissionCountdownTimer = setInterval(tick, 1000);
+
+  permissionBackdrop.hidden = false;
+}
+
+function stopPermissionCountdown() {
+  if (permissionCountdownTimer != null) {
+    clearInterval(permissionCountdownTimer);
+    permissionCountdownTimer = null;
+  }
+}
+
+function closePermissionDialog() {
+  if (!permissionBackdrop) return;
+  stopPermissionCountdown();
+  permissionBackdrop.hidden = true;
+  activePermissionRequestId = null;
+  permissionCountdown.textContent = "";
+}
+
+async function postPermissionDecision(decision) {
+  const requestId = activePermissionRequestId;
+  if (!requestId) return;
+  // Optimistically close the dialog so the user sees an immediate response
+  // even on a slow network. The backend resolves the future and the agent
+  // proceeds — or in the deny case, surfaces a tool-error string.
+  closePermissionDialog();
+  try {
+    await fetch(`${BACKEND_URL}/api/permissions/decide`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request_id: requestId, decision }),
+    });
+  } catch (err) {
+    // The broker will time out and deny on its own; surface a hint so the
+    // user knows their click might not have registered.
+    console.warn("permission decide failed:", err);
+  }
+}
+
+if (permissionDeny) permissionDeny.addEventListener("click", () => postPermissionDecision("deny"));
+if (permissionOnce) permissionOnce.addEventListener("click", () => postPermissionDecision("allow_once"));
+if (permissionSession) permissionSession.addEventListener("click", () => postPermissionDecision("allow_session"));
+if (permissionAlways) permissionAlways.addEventListener("click", () => postPermissionDecision("allow_always"));
+
+// ---------------------------------------------------------------------------
 // Composer submit — streaming or one-shot depending on toggle
 // ---------------------------------------------------------------------------
 
@@ -969,16 +1061,84 @@ async function runStreaming(payload) {
   const thinking = appendThinkingIndicator();
   let assistantNode = null;
   let assistantText = "";
-  let toolCalls = [];
+  // ``liveSteps`` is keyed by ``step_id`` so out-of-order tool_end events still
+  // patch the right card. We also keep insertion order for deterministic
+  // rendering — Map iteration honours insertion order in modern JS engines.
+  const liveSteps = new Map();
+  // Plan from the agent's pre-execution declaration (one ``plan`` event per
+  // turn, before any tool_start). Held outside the steps map so re-renders
+  // keep showing it even after later tool events repaint the timeline.
+  let livePlan = null;
   let activeAgent = "";
+
+  const upsertStep = (data, status) => {
+    const id = data?.step_id;
+    if (!id) return;
+    const previous = liveSteps.get(id) || {};
+    liveSteps.set(id, {
+      step_id: id,
+      index: data.index ?? previous.index ?? liveSteps.size + 1,
+      name: data.name ?? previous.name ?? "(unknown tool)",
+      args: data.args ?? previous.args ?? {},
+      result: data.result ?? previous.result ?? "",
+      success: typeof data.success === "boolean" ? data.success : previous.success,
+      duration_ms: data.duration_ms ?? previous.duration_ms,
+      // Preserve any partial stdout we collected from tool_progress events so
+      // a tool_end repaint doesn't blow away the live tail.
+      progress_lines: previous.progress_lines || [],
+      status,
+    });
+    renderLiveTimeline(liveSteps, livePlan);
+  };
+
+  // tool_progress carries one stdout line at a time. Attach it to the step
+  // identified by step_id, falling back to "the most recent running step"
+  // for tools (e.g. legacy mocks) that don't propagate the id.
+  const appendProgressLine = (data) => {
+    let target = null;
+    if (data?.step_id && liveSteps.has(data.step_id)) {
+      target = liveSteps.get(data.step_id);
+    } else {
+      const stepsArr = Array.from(liveSteps.values());
+      for (let i = stepsArr.length - 1; i >= 0; i -= 1) {
+        if (stepsArr[i].status === "running") { target = stepsArr[i]; break; }
+      }
+    }
+    if (!target) return;
+    const lines = target.progress_lines || [];
+    lines.push(String(data?.text || ""));
+    // Cap so a runaway loop can't grow forever in the renderer's memory.
+    if (lines.length > 200) lines.splice(0, lines.length - 200);
+    target.progress_lines = lines;
+    renderLiveTimeline(liveSteps, livePlan);
+  };
 
   await streamChat(payload, {
     onEvent: ({ event, data }) => {
       if (event === "intent") {
         activeAgent = data?.delegated_to || activeAgent;
+      } else if (event === "plan") {
+        // Pre-execution checklist — render before any tools start.
+        livePlan = data || null;
+        renderLiveTimeline(liveSteps, livePlan);
+      } else if (event === "tool_start") {
+        // Show the tool card immediately with a running indicator. ``result``
+        // is intentionally empty until tool_end arrives.
+        upsertStep(data, "running");
+      } else if (event === "tool_progress") {
+        appendProgressLine(data);
+      } else if (event === "tool_end") {
+        upsertStep(data, data?.success === false ? "failed" : "completed");
       } else if (event === "tool_call") {
-        toolCalls.push(data);
-        renderTimeline(toolCalls);
+        // Back-compat aggregated event. If the live pipeline has already
+        // recorded this step (by id), don't double-render it.
+        if (data?.step_id && liveSteps.has(data.step_id)) return;
+        upsertStep(data, data?.success === false ? "failed" : "completed");
+      } else if (event === "permission_request") {
+        // Surface the broker's ask. The user's click POSTs to /api/permissions/decide
+        // which unblocks the waiting tool — this onEvent handler doesn't need
+        // to await anything; the SSE stream stays open in the background.
+        openPermissionDialog(data || {});
       } else if (event === "delta") {
         if (!assistantNode) {
           thinking.remove();
@@ -999,7 +1159,12 @@ async function runStreaming(payload) {
         finalizeStreamingMessage(assistantNode, meta);
         recordHistory("assistant", assistantText, meta);
         renderTask(data?.task || {}, data?.trace || {}, data?.memory_summary || "");
-        renderTimeline(data?.trace?.tool_calls || toolCalls);
+        // Prefer the authoritative tool_calls from the trace (it carries
+        // step_id / duration_ms), fall back to whatever liveSteps captured.
+        const finalCalls = data?.trace?.tool_calls?.length
+          ? data.trace.tool_calls
+          : Array.from(liveSteps.values());
+        renderTimeline(finalCalls);
         renderArtifacts(data?.artifacts || []);
       } else if (event === "error") {
         if (assistantNode) {
@@ -1013,6 +1178,92 @@ async function runStreaming(payload) {
       }
     },
   });
+}
+
+// Render in-flight tool steps as they happen. Distinct from ``renderTimeline``
+// (which is for the final, post-turn aggregation): this one patches step cards
+// in place so a "running" step can flip to "completed"/"failed" without
+// reconstructing the DOM tree from scratch.
+//
+// ``plan`` is optional. When the agent emits a ``plan`` event before tool
+// execution, we render a checklist on top of the timeline; checked items are
+// the ones we've already covered (matched roughly by step index).
+function renderLiveTimeline(stepsMap, plan) {
+  clearChildren(timelineEl);
+
+  if (plan && Array.isArray(plan.plan) && plan.plan.length) {
+    const checklist = el("div", { className: "live-plan" });
+    if (plan.summary) {
+      checklist.appendChild(el("p", { className: "live-plan-summary", text: plan.summary }));
+    }
+    const completedCount = stepsMap
+      ? Array.from(stepsMap.values()).filter((s) => s.status === "completed").length
+      : 0;
+    const list = el("ol", { className: "live-plan-list" });
+    plan.plan.forEach((stepText, index) => {
+      const isDone = index < completedCount;
+      const item = el("li", { className: "live-plan-item" + (isDone ? " done" : "") }, [
+        el("span", { className: "live-plan-mark", text: isDone ? "✓" : String(index + 1) }),
+        el("span", { className: "live-plan-text", text: String(stepText) }),
+      ]);
+      list.appendChild(item);
+    });
+    checklist.appendChild(list);
+    timelineEl.appendChild(checklist);
+  }
+
+  if (!stepsMap || !stepsMap.size) {
+    if (!plan || !Array.isArray(plan.plan) || !plan.plan.length) {
+      timelineEl.appendChild(el("p", { className: "empty", text: "工具调用会显示在这里。" }));
+    }
+    return;
+  }
+  let position = 0;
+  for (const step of stepsMap.values()) {
+    position += 1;
+    const status = step.status || "running";
+    const detail = el("details", { className: `timeline-item tool-${status}` });
+    if (status === "running" || position === stepsMap.size) detail.open = true;
+    const headChildren = [
+      el("strong", { text: `${step.index || position}. ${step.name}` }),
+      el("span", {
+        className: `chip ${status}`,
+        text: statusLabel(status),
+      }),
+    ];
+    if (typeof step.duration_ms === "number" && status !== "running") {
+      headChildren.push(
+        el("span", { className: "step-duration", text: `${step.duration_ms} ms` }),
+      );
+    }
+    const summary = el("summary", { className: "timeline-head" }, headChildren);
+    detail.appendChild(summary);
+    detail.appendChild(el("p", { className: "tool-preview", text: argsPreview(step.args || {}) }));
+    detail.appendChild(el("div", { className: "tool-block-title", text: "调用参数" }));
+    detail.appendChild(el("pre", { className: "tool-pre", text: formatJson(step.args || {}) }));
+
+    // Live stdout tail — populated by tool_progress events. Show below the
+    // args block (above the final result) so the user can watch a long
+    // command without expanding extra panels.
+    const progressLines = step.progress_lines || [];
+    if (progressLines.length) {
+      detail.appendChild(el("div", { className: "tool-block-title", text: "实时输出" }));
+      detail.appendChild(
+        el("pre", { className: "tool-pre tool-progress-tail", text: progressLines.join("\n") }),
+      );
+    }
+
+    if (status === "running") {
+      detail.appendChild(el("div", { className: "tool-running-hint" }, [
+        el("span", { className: "running-spinner" }),
+        el("span", { text: " 工具正在执行…" }),
+      ]));
+    } else {
+      detail.appendChild(el("div", { className: "tool-block-title", text: "返回结果" }));
+      detail.appendChild(el("pre", { className: "tool-pre", text: step.result || "(empty)" }));
+    }
+    timelineEl.appendChild(detail);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1090,6 +1341,7 @@ setInterval(refreshReady, 30_000);
 let settingsState = null;        // last-loaded backend snapshot
 let desktopPrefsState = null;    // last-loaded Electron desktop preferences
 let providerListing = null;      // /api/settings/providers result
+let personaPresets = null;       // /api/persona/presets result (cached)
 let pendingPatch = {};           // unsaved field deltas
 let pendingDesktopPatch = {};    // unsaved desktop preference deltas
 let activeTab = "general";
@@ -1202,6 +1454,17 @@ async function reloadSettings() {
     providerListing = providers;
     pendingPatch = {};
     pendingDesktopPatch = {};
+    // Persona presets are cached after the first successful fetch — they
+    // never change at runtime. A failure here is non-fatal: the tab falls
+    // back to "no presets available" but the form fields still work.
+    if (personaPresets == null) {
+      try {
+        const resp = await fetch(`${BACKEND_URL}/api/persona/presets`);
+        if (resp.ok) personaPresets = await resp.json();
+      } catch (err) {
+        console.warn("persona presets fetch failed:", err);
+      }
+    }
     renderSettingsBody();
     setSettingsStatus("已加载", "ok");
     setTimeout(() => setSettingsStatus(""), 1500);
@@ -1363,8 +1626,10 @@ function renderSettingsBody() {
   }
   if (activeTab === "general") renderGeneralTab();
   else if (activeTab === "pet") renderPetTab();
+  else if (activeTab === "persona") renderPersonaTab();
   else if (activeTab === "voice") renderVoiceTab();
   else if (activeTab === "memory") renderMemoryTab();
+  else if (activeTab === "permissions") renderPermissionsTab();
   else renderAboutTab();
 }
 
@@ -1487,4 +1752,362 @@ function renderAboutTab() {
   ]);
   settingsBody.appendChild(pre);
   settingsBody.appendChild(links);
+}
+
+// ---- Permissions tab ----------------------------------------------------
+//
+// The two lists are stored on the backend as JSON-encoded strings (see
+// ``workspace_allowlist_json`` / ``workspace_denylist_json`` in Settings).
+// We parse them on the way in, present them as removable chips, and re-
+// serialise on every mutation so the change is detected by ``setPending``
+// and persisted on Save.
+
+function parsePathListField(name) {
+  const raw = effectiveValue(name) ?? "[]";
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((p) => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function setPathListField(name, list) {
+  setPending(name, JSON.stringify(list));
+  renderSettingsBody();  // re-render to reflect chip changes
+}
+
+function renderPathList(name, locked) {
+  const wrapper = el("div", { className: "permissions-list" });
+  const items = parsePathListField(name);
+  if (!items.length) {
+    wrapper.appendChild(
+      el("p", { className: "empty", text: locked ? "（默认黑名单为空，已使用内置防护）" : "（暂无白名单条目）" })
+    );
+    return wrapper;
+  }
+  items.forEach((path, index) => {
+    const row = el("div", { className: `permission-row${locked ? " locked" : ""}` }, [
+      el("code", { text: path }),
+      el("button", {
+        className: "ghost compact",
+        text: "移除",
+        attrs: { type: "button" },
+      }),
+    ]);
+    const removeBtn = row.querySelector("button");
+    removeBtn.addEventListener("click", () => {
+      const next = parsePathListField(name).filter((_, i) => i !== index);
+      setPathListField(name, next);
+    });
+    wrapper.appendChild(row);
+  });
+  return wrapper;
+}
+
+function renderPathAddRow(name, placeholder) {
+  const input = el("input", {
+    attrs: { type: "text", placeholder, "aria-label": "新增路径" },
+  });
+  const button = el("button", {
+    className: "ghost",
+    text: "添加",
+    attrs: { type: "button" },
+  });
+  button.addEventListener("click", () => {
+    const value = input.value.trim();
+    if (!value) return;
+    const list = parsePathListField(name);
+    if (list.includes(value)) return;
+    list.push(value);
+    setPathListField(name, list);
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      button.click();
+    }
+  });
+  return el("div", { className: "permission-add-row" }, [input, button]);
+}
+
+// ---- Persona tab --------------------------------------------------------
+//
+// PersonaConfig is stored as a single JSON blob in `persona_config_json`.
+// The UI parses it into a working object, mutates fields in place, and
+// re-serialises on every change so `setPending` records a single
+// `persona_config_json` delta.
+
+function personaConfigDefaults() {
+  return {
+    name: "星野",
+    archetype: "swordswoman_partner",
+    personality_traits: ["温柔", "坚定", "略带俏皮", "保护欲强"],
+    speaking_style: "简洁有力，温暖有节制",
+    address_user_as: "你",
+    backstory: "",
+    forbidden_topics: [],
+    catchphrases: [],
+    emoji_usage: "occasional",
+    response_length: "balanced",
+    custom_system_prompt: "",
+  };
+}
+
+function effectivePersonaConfig() {
+  const raw = effectiveValue("persona_config_json") ?? "";
+  if (!raw || !String(raw).trim()) return personaConfigDefaults();
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return { ...personaConfigDefaults(), ...parsed };
+    }
+  } catch {
+    // fall through
+  }
+  return personaConfigDefaults();
+}
+
+function commitPersonaConfig(mutator, { rerender = false } = {}) {
+  const next = mutator(effectivePersonaConfig());
+  setPending("persona_config_json", JSON.stringify(next));
+  if (rerender) renderSettingsBody();
+}
+
+function personaTextInput(label, hint, configKey, { multiline = false } = {}) {
+  const input = multiline ? document.createElement("textarea") : document.createElement("input");
+  if (!multiline) input.type = "text";
+  if (multiline) input.rows = 4;
+  input.value = effectivePersonaConfig()[configKey] ?? "";
+  // Don't re-render on input — that would steal focus from the textbox.
+  input.addEventListener("input", () => {
+    commitPersonaConfig((c) => ({ ...c, [configKey]: input.value }));
+  });
+  return fieldGroup(label, hint, input);
+}
+
+function personaChipList(label, hint, configKey, placeholder) {
+  const wrapper = el("div", { className: "field" });
+  wrapper.appendChild(el("span", { className: "field-label", text: label }));
+  if (hint) wrapper.appendChild(el("p", { className: "field-hint", text: hint }));
+  const items = effectivePersonaConfig()[configKey] || [];
+  const chips = el("div", { className: "persona-chips" });
+  if (!items.length) {
+    chips.appendChild(el("span", { className: "empty-inline", text: "（暂无）" }));
+  }
+  items.forEach((item, index) => {
+    const removeBtn = el("button", {
+      className: "persona-chip-remove",
+      text: "×",
+      attrs: { type: "button", "aria-label": `移除 ${item}` },
+    });
+    removeBtn.addEventListener("click", () => {
+      commitPersonaConfig(
+        (c) => ({
+          ...c,
+          [configKey]: (c[configKey] || []).filter((_, i) => i !== index),
+        }),
+        { rerender: true },
+      );
+    });
+    chips.appendChild(el("span", { className: "persona-chip" }, [
+      el("span", { text: item }),
+      removeBtn,
+    ]));
+  });
+  wrapper.appendChild(chips);
+
+  const addInput = document.createElement("input");
+  addInput.type = "text";
+  addInput.placeholder = placeholder;
+  const addBtn = el("button", {
+    className: "ghost",
+    text: "添加",
+    attrs: { type: "button" },
+  });
+  const commitAdd = () => {
+    const value = addInput.value.trim();
+    if (!value) return;
+    commitPersonaConfig(
+      (c) => {
+        const list = c[configKey] || [];
+        if (list.includes(value)) return c;
+        return { ...c, [configKey]: [...list, value] };
+      },
+      { rerender: true },
+    );
+  };
+  addBtn.addEventListener("click", commitAdd);
+  addInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitAdd();
+    }
+  });
+  wrapper.appendChild(el("div", { className: "persona-add-row" }, [addInput, addBtn]));
+  return wrapper;
+}
+
+function personaRadio(label, hint, configKey, options) {
+  const wrapper = el("div", { className: "field" });
+  wrapper.appendChild(el("span", { className: "field-label", text: label }));
+  if (hint) wrapper.appendChild(el("p", { className: "field-hint", text: hint }));
+  const current = effectivePersonaConfig()[configKey];
+  const group = el("div", { className: "persona-radio-group" });
+  for (const opt of options) {
+    const id = `persona-${configKey}-${opt.value}`;
+    const labelEl = el("label", { className: "persona-radio" + (current === opt.value ? " selected" : "") });
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = `persona-${configKey}`;
+    radio.value = opt.value;
+    radio.id = id;
+    radio.checked = current === opt.value;
+    radio.addEventListener("change", () => {
+      if (!radio.checked) return;
+      commitPersonaConfig(
+        (c) => ({ ...c, [configKey]: opt.value }),
+        { rerender: true },
+      );
+    });
+    labelEl.appendChild(radio);
+    labelEl.appendChild(el("span", { text: opt.label }));
+    group.appendChild(labelEl);
+  }
+  wrapper.appendChild(group);
+  return wrapper;
+}
+
+function renderPersonaPresetRow() {
+  const row = el("div", { className: "persona-presets" });
+  if (!personaPresets || !Array.isArray(personaPresets.presets) || !personaPresets.presets.length) {
+    row.appendChild(el("p", { className: "empty", text: "（预设加载中或后端未返回，可手动编辑下面的字段）" }));
+    return row;
+  }
+  // Highlight the preset whose archetype matches the current config — coarse
+  // but useful: lets the user see "I'm currently on the 学姐 preset" at a glance.
+  const currentArchetype = effectivePersonaConfig().archetype;
+  for (const preset of personaPresets.presets) {
+    const isActive = preset.id === currentArchetype;
+    const card = el(
+      "button",
+      {
+        className: "persona-preset" + (isActive ? " active" : ""),
+        attrs: { type: "button", title: preset.description || preset.label },
+      },
+      [
+        el("strong", { text: preset.label }),
+        el("span", { className: "persona-preset-desc", text: preset.description || "" }),
+      ],
+    );
+    card.addEventListener("click", () => {
+      commitPersonaConfig(() => ({ ...preset.config }), { rerender: true });
+      setSettingsStatus(`已套用预设：${preset.label}（保存后生效）`, "dirty");
+    });
+    row.appendChild(card);
+  }
+  return row;
+}
+
+function renderPersonaTab() {
+  const groups = el("div", { className: "settings-section" }, [
+    el("h3", { text: "预设" }),
+    el("p", {
+      className: "field-hint",
+      text: "点击一个预设即可一键填充下面的字段。你也可以基于预设再修改任意字段。修改后点保存生效。",
+    }),
+    renderPersonaPresetRow(),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "基本身份" }),
+    personaTextInput("名字", "桌宠对自己的称呼。", "name"),
+    personaTextInput("如何称呼用户", "例如 你 / 主人 / 同学 / 大人。", "address_user_as"),
+    personaTextInput(
+      "背景故事",
+      "一段自由文本，不要冒充受版权保护的角色。可以留空。",
+      "backstory",
+      { multiline: true },
+    ),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "性格与说话风格" }),
+    personaChipList(
+      "性格特质",
+      "用短词描述，例如 温柔 / 严谨 / 元气。回车快速添加。",
+      "personality_traits",
+      "添加一个性格特质",
+    ),
+    personaTextInput("说话风格", "例如：简洁有力 / 知识密度高 / 短句感叹号多。", "speaking_style"),
+    personaChipList(
+      "口头禅",
+      "桌宠常说的短语，会自然出现在回复中。",
+      "catchphrases",
+      "添加一个口头禅",
+    ),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "回复偏好" }),
+    personaRadio("Emoji 使用", "", "emoji_usage", [
+      { value: "none", label: "不使用" },
+      { value: "occasional", label: "偶尔使用" },
+      { value: "frequent", label: "频繁使用" },
+    ]),
+    personaRadio("回复长度", "", "response_length", [
+      { value: "concise", label: "简洁" },
+      { value: "balanced", label: "平衡" },
+      { value: "detailed", label: "详细" },
+    ]),
+    personaChipList(
+      "禁忌话题",
+      "桌宠会拒绝主动谈论的话题。回车快速添加。",
+      "forbidden_topics",
+      "添加一个禁忌话题",
+    ),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "高级（可选）" }),
+    personaTextInput(
+      "自定义补充指令",
+      "追加在系统 prompt 末尾，覆盖不了角色职责，但可以加任意额外要求。留空即可。",
+      "custom_system_prompt",
+      { multiline: true },
+    ),
+  ]);
+  settingsBody.appendChild(groups);
+}
+
+function renderPermissionsTab() {
+  const groups = el("div", { className: "settings-section" }, [
+    el("h3", { text: "白名单（自动放行）" }),
+    el("p", {
+      className: "field-hint",
+      text: "桌宠在这些目录及其子目录里的文件操作不会触发询问。可以手填路径，也可以在弹窗里点“永久允许”自动加入。",
+    }),
+    renderPathList("workspace_allowlist_json", false),
+    renderPathAddRow(
+      "workspace_allowlist_json",
+      "例如 E:\\projects 或 ~/Documents/sandbox",
+    ),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "黑名单（永远拒绝）" }),
+    el("p", {
+      className: "field-hint",
+      text: "在这里的目录就算手动加进白名单也会被覆盖。系统目录、密钥目录建议保留默认。",
+    }),
+    renderPathList("workspace_denylist_json", true),
+    renderPathAddRow(
+      "workspace_denylist_json",
+      "例如 C:\\Users\\Public 或 ~/.config",
+    ),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "询问行为" }),
+    toggleField(
+      "需要确认时弹窗询问",
+      "关闭后，白名单外的访问会直接被拒绝（不弹窗）。建议保持开启。",
+      "require_path_confirmation",
+    ),
+    textField(
+      "等待用户决定的超时秒数",
+      "用户没有在此时间内点选时，自动按拒绝处理。",
+      "permission_request_timeout_seconds",
+      { type: "number" },
+    ),
+  ]);
+  settingsBody.appendChild(groups);
 }

@@ -19,6 +19,7 @@ from app.schemas import (
     ChatResponse,
     ObservationRequest,
     ObservationResponse,
+    PermissionDecision,
     ProviderInfo,
     SettingsPatch,
     SettingsView,
@@ -28,6 +29,8 @@ from app.schemas import (
 )
 from app.services import voice as voice_service
 from app.services.model_client import close_http_client
+from app.services.permission_broker import broker as permission_broker
+from app.services.persona import builder as persona_builder
 from app.services.settings_store import store as settings_store
 
 logger = get_logger("main")
@@ -214,6 +217,11 @@ async def get_settings() -> SettingsView:
         rate_limit_refill_per_second=settings.rate_limit_refill_per_second,
         tts_audio_retention_hours=settings.tts_audio_retention_hours,
         enable_gui_automation=settings.enable_gui_automation,
+        workspace_allowlist_json=settings.workspace_allowlist_json,
+        workspace_denylist_json=settings.workspace_denylist_json,
+        require_path_confirmation=settings.require_path_confirmation,
+        permission_request_timeout_seconds=settings.permission_request_timeout_seconds,
+        persona_config_json=settings.persona_config_json,
     )
 
 
@@ -330,6 +338,33 @@ async def companion_strategy(session_id: str) -> dict:
 @app.post("/api/companion/observe", response_model=ObservationResponse)
 async def observe_screen(request: ObservationRequest) -> ObservationResponse:
     return await orchestrator.observe_screen(request)
+
+
+@app.get("/api/persona/presets")
+async def persona_presets() -> dict:
+    """Catalog of persona presets surfaced by the settings UI.
+
+    The frontend lists these as one-click "apply" buttons; clicking sends
+    the chosen preset's config back via ``PUT /api/settings`` (encoded into
+    ``persona_config_json``). The current persona JSON is also returned so
+    the UI can highlight the active preset (or "自定义" if it doesn't match).
+    """
+    presets = [preset.model_dump() for preset in persona_builder.list_presets()]
+    current = persona_builder.load_config().model_dump()
+    return {"presets": presets, "current": current}
+
+
+@app.post("/api/permissions/decide")
+async def permissions_decide(payload: PermissionDecision) -> dict:
+    """Settle a pending ``permission_request`` raised by the broker.
+
+    Returns ``{"resolved": True}`` if the request was outstanding (i.e. the
+    waiting tool will now resume); ``{"resolved": False}`` if the request had
+    already timed out or never existed. Either way the response is HTTP 200 —
+    the UI doesn't need to distinguish, it just dismisses the dialog.
+    """
+    resolved = permission_broker.resolve(payload.request_id, payload.decision)
+    return {"resolved": resolved, "pending_count": permission_broker.pending_count()}
 
 
 @app.get("/api/profile/{session_id}", response_model=UserProfile)

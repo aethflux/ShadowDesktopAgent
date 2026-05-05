@@ -39,6 +39,11 @@ class ToolCallRecord(BaseModel):
     # Defaults to True so existing call sites that don't set it (e.g. screen
     # capture) keep their pre-existing semantics.
     success: bool = True
+    # Optional progress-tracking metadata. Populated by ``LLMAgent`` when a
+    # ``progress_cb`` is wired up by the orchestrator so the streaming UI can
+    # correlate ``tool_start`` / ``tool_end`` events with the final record.
+    step_id: str | None = None
+    duration_ms: int | None = None
 
 
 class AgentTrace(BaseModel):
@@ -159,6 +164,71 @@ class ProviderInfo(BaseModel):
     supports_vision: bool
 
 
+# ---- Permission broker ---------------------------------------------------- #
+
+
+class PermissionRequest(BaseModel):
+    """An outstanding ask from the agent to access a directory the user has
+    not pre-approved. Carries enough context for the UI to render a useful
+    dialog ("terminal.run wants to use cwd=…") before the user decides."""
+    request_id: str
+    path: str
+    reason: str
+    tool_name: str | None = None
+    session_id: str | None = None
+
+
+class PermissionDecision(BaseModel):
+    """User's response to a ``PermissionRequest``. The four choices map to
+    different lifetimes:
+    - ``allow_once``  — only this single tool call.
+    - ``allow_session`` — every subsequent call in this chat session.
+    - ``allow_always`` — written into ``workspace_allowlist`` permanently.
+    - ``deny`` — abort the current tool call.
+    """
+    request_id: str
+    decision: Literal["allow_once", "allow_session", "allow_always", "deny"]
+
+
+# ---- Persona / personality ----------------------------------------------- #
+
+
+class PersonaConfig(BaseModel):
+    """User-tunable personality knobs.
+
+    Stored as a single JSON blob in ``settings.persona_config_json`` so the
+    whole structure can be swapped atomically (e.g. when the user clicks
+    "apply preset"). All fields have sensible defaults — an empty config is
+    valid and renders to the original Hoshino swordswoman-partner persona.
+    """
+    name: str = "星野"
+    archetype: str = "swordswoman_partner"
+    personality_traits: list[str] = Field(
+        default_factory=lambda: ["温柔", "坚定", "略带俏皮", "保护欲强"],
+    )
+    speaking_style: str = "简洁有力，温暖有节制"
+    address_user_as: str = "你"
+    backstory: str = ""
+    forbidden_topics: list[str] = Field(default_factory=list)
+    catchphrases: list[str] = Field(default_factory=list)
+    emoji_usage: Literal["none", "occasional", "frequent"] = "occasional"
+    response_length: Literal["concise", "balanced", "detailed"] = "balanced"
+    # Optional escape hatch for power users — when non-empty this is appended
+    # verbatim to the rendered system prompt, overriding nothing but adding
+    # arbitrary extra instructions.
+    custom_system_prompt: str = ""
+
+
+class PersonaPreset(BaseModel):
+    """One named preset surfaced via ``GET /api/persona/presets``. The UI
+    shows ``label`` / ``description``; clicking applies ``config`` to the
+    settings overlay."""
+    id: str
+    label: str
+    description: str
+    config: PersonaConfig
+
+
 class SettingsView(BaseModel):
     """Read-only public view of mutable settings, with light context.
 
@@ -200,6 +270,13 @@ class SettingsView(BaseModel):
     rate_limit_refill_per_second: float
     tts_audio_retention_hours: int
     enable_gui_automation: bool
+    # Permission broker (workspace_*_json are JSON arrays of paths)
+    workspace_allowlist_json: str
+    workspace_denylist_json: str
+    require_path_confirmation: bool
+    permission_request_timeout_seconds: int
+    # Persona — full PersonaConfig encoded as JSON
+    persona_config_json: str
 
 
 class SettingsPatch(BaseModel):
@@ -239,3 +316,10 @@ class SettingsPatch(BaseModel):
     rate_limit_refill_per_second: float | None = None
     tts_audio_retention_hours: int | None = None
     enable_gui_automation: bool | None = None
+    # Permission broker
+    workspace_allowlist_json: str | None = None
+    workspace_denylist_json: str | None = None
+    require_path_confirmation: bool | None = None
+    permission_request_timeout_seconds: int | None = None
+    # Persona
+    persona_config_json: str | None = None

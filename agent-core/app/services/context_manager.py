@@ -40,11 +40,11 @@ class ContextManager:
             if matched_skills else ""
         )
 
+        # Persona description is no longer hard-coded here. The system prompt
+        # is fully owned by ``PersonaBuilder`` (see ``services/persona.py``)
+        # and injected by the agent's ``get_system_prompt``. This block is
+        # now pure runtime context — memory, attachments, and active skills.
         parts = [
-            "You are Hoshino, an original desktop digital companion with an elegant, ",
-            "warm, and quietly brave swordswoman-partner persona. ",
-            "Do not claim to be any copyrighted anime character. ",
-            "Be proactive, concise, supportive, and operational. ",
             f"Long-term user profile: {profile_summary}. ",
             f"Recent memory: {memory_summary}. ",
             f"Semantically related memories: {semantic_block}. ",

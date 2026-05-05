@@ -29,6 +29,7 @@ from app.services.context_manager import ContextManager
 from app.services.mcp_client import MCPClient
 from app.services.memory import MemoryStore
 from app.services.skill_loader import SkillLoader
+from app.services.streaming_context import progress_cb_var, session_id_var
 from app.tools.registry import ToolRegistry
 from app.tools.result_status import infer_tool_status
 
@@ -236,12 +237,15 @@ class MultiAgentOrchestrator:
     async def stream_chat(self, request: ChatRequest) -> AsyncIterator[dict]:
         """Run a chat turn and yield progress events for an SSE stream.
 
-        Event order: ``start`` → ``intent`` → ``tool_call`` (one per tool) →
-        ``delta`` (reply text in small chunks) → ``done``.
+        Event order: ``start`` → ``intent`` → (``tool_start`` → ``tool_end``)*
+        → ``tool_call`` (aggregated, one per tool, kept for back-compat)
+        → ``delta`` (reply text in small chunks) → ``done``.
 
-        Tool calls are emitted *after* the agent finishes (the underlying
-        agent.handle is not yet streaming-aware), but the chunked delta makes
-        the UX feel responsive immediately.
+        ``tool_start`` / ``tool_end`` are emitted live as the agent steps
+        through its tool calls, by wiring an async ``progress_cb`` into the
+        agent. We run the agent as a background task and concurrently consume
+        a queue the callback feeds, so events flush to the browser the moment
+        each tool finishes — not at the end of the whole turn.
         """
         yield {"event": "start", "data": {"session_id": request.session_id, "message": request.message}}
 
@@ -271,23 +275,70 @@ class MultiAgentOrchestrator:
             },
         }
 
+        # ---- Run the agent and stream live progress events --------------- #
+        # The queue carries dicts shaped like {"event": ..., "data": ...} or
+        # the sentinel ``None`` to signal the agent finished. Bounded size
+        # keeps a runaway tool from buffering megabytes if the client is slow.
+        progress_queue: asyncio.Queue = asyncio.Queue(maxsize=256)
+
+        async def progress_cb(event: dict) -> None:
+            await progress_queue.put(event)
+
+        async def run_agent() -> tuple[str, list[ToolCallRecord]]:
+            # Expose the streaming callback + session id to deeper code paths
+            # (e.g. the permission broker called from inside a tool) via
+            # ContextVars. Setting them here means they're inherited by every
+            # async subtask the agent spawns, but stay isolated from concurrent
+            # /api/chat/stream requests.
+            progress_token = progress_cb_var.set(progress_cb)
+            session_token = session_id_var.set(request.session_id)
+            try:
+                return await self.agents[delegated].handle(
+                    message=request.message,
+                    registry=self.registry,
+                    attachments=request.attachments,
+                    memory_summary=prompt_context,
+                    session_id=request.session_id,
+                    progress_cb=progress_cb,
+                )
+            finally:
+                progress_cb_var.reset(progress_token)
+                session_id_var.reset(session_token)
+                # Always release the consumer loop, even if handle() raised.
+                await progress_queue.put(None)
+
+        agent_task: asyncio.Task = asyncio.create_task(run_agent())
+
+        # Consume progress events as the agent produces them. The queue is
+        # closed by a ``None`` sentinel pushed in the ``finally`` of run_agent.
+        while True:
+            event = await progress_queue.get()
+            if event is None:
+                break
+            yield event
+
+        # Agent task is now finished — surface its result or its exception.
         try:
-            reply, tool_calls = await self.agents[delegated].handle(
-                message=request.message,
-                registry=self.registry,
-                attachments=request.attachments,
-                memory_summary=prompt_context,
-                session_id=request.session_id,
-            )
+            reply, tool_calls = await agent_task
         except Exception as exc:  # pragma: no cover — defensive net for the stream
             logger.exception("Streaming chat failed: %s", exc)
             yield {"event": "error", "data": {"message": f"agent execution failed: {exc}"}}
             return
 
+        # Back-compat: emit aggregated ``tool_call`` events so older renderers
+        # (and the existing test suite) keep working unchanged. New clients
+        # should prefer the live ``tool_start`` / ``tool_end`` pair.
         for tc in tool_calls:
             yield {
                 "event": "tool_call",
-                "data": {"name": tc.name, "args": tc.args, "result": tc.result, "success": tc.success},
+                "data": {
+                    "name": tc.name,
+                    "args": tc.args,
+                    "result": tc.result,
+                    "success": tc.success,
+                    "step_id": tc.step_id,
+                    "duration_ms": tc.duration_ms,
+                },
             }
 
         # Chunk the reply for progressive rendering. Small enough chunks to feel

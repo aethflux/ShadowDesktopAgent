@@ -137,6 +137,43 @@ class Settings(BaseSettings):
     mcp_tool_denylist: str = "write_file,edit_file,create_directory,move_file"
     mcp_tool_blocked_keywords: str = "write,edit,delete,remove,move,create,rename"
 
+    # ---- Persona ----
+    # Full PersonaConfig serialised as JSON. Empty string ⇒ defaults
+    # (the original Hoshino swordswoman-partner persona).
+    persona_config_json: str = ""
+
+    # ---- Long-task knobs ----
+    # Maximum LLM ↔ tool round-trips per chat turn. The old hard-coded value
+    # of 6 was tight for multi-step coding tasks (read repo → install dep →
+    # run tests → fix → re-run). Bump to 12 by default; the UI can lower it
+    # for cost-sensitive setups.
+    max_tool_iterations: int = 12
+    # When enabled, the agent emits a structured plan ("I'll do X, then Y…")
+    # *before* it starts calling tools, so the UI can render a checklist that
+    # ticks off steps as they complete. Recommend keeping on; agents can opt
+    # out per turn if the user request is a one-line ask.
+    enable_plan_first: bool = True
+    # Cap stdout/stderr forwarding from streaming subprocess to prevent a
+    # runaway command from drowning the SSE stream. Counted in characters.
+    terminal_stream_max_chars: int = 8000
+
+    # ---- Workspace permission broker ----
+    # When the agent needs to access a directory outside the project workspace,
+    # the broker surfaces a ``permission_request`` SSE event and awaits a user
+    # decision instead of failing outright. ``workspace_allowlist`` and
+    # ``workspace_denylist`` are JSON arrays of absolute paths (or ``~``
+    # paths) — the broker matches against them as path prefixes.
+    workspace_allowlist_json: str = "[]"
+    workspace_denylist_json: str = (
+        # Sensible Windows defaults — these are *never* unlockable, even if a
+        # user accidentally tries to add them to the allowlist. The deny list
+        # always wins.
+        '["C:\\\\Windows", "C:\\\\Program Files", "C:\\\\Program Files (x86)", '
+        '"~/.ssh", "~/.aws", "~/.docker"]'
+    )
+    require_path_confirmation: bool = True
+    permission_request_timeout_seconds: int = 60
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

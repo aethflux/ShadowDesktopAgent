@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from app.schemas import TerminalSessionState, ToolCallRecord
@@ -50,18 +51,25 @@ def test_invalid_cwd_reports_clear_error() -> None:
         raise AssertionError("expected FileNotFoundError")
 
 
-def test_outside_workspace_cwd_is_rejected() -> None:
+def test_outside_workspace_cwd_is_blocked_via_broker() -> None:
+    """Out-of-workspace cwd no longer hard-rejects synchronously: the
+    permission broker now mediates. When called outside a streaming session
+    (no progress_cb in the contextvar), the broker hard-denies, and ``arun``
+    converts that into a structured tool-error string instead of raising."""
     tool = TerminalTool()
     outside = Path.home()
     if tool._is_path_allowed(outside):
         outside = Path.home().anchor
 
-    try:
-        tool.run(command="echo nope", cwd=str(outside), session_id="test-outside-cwd", reset_session=True)
-    except PermissionError as exc:
-        assert "outside allowed workspace" in str(exc)
-    else:
-        raise AssertionError("expected PermissionError")
+    result = asyncio.run(
+        tool.arun(
+            command="echo nope",
+            cwd=str(outside),
+            session_id="test-outside-cwd",
+            reset_session=True,
+        )
+    )
+    assert "Tool terminal.run blocked" in result, result
 
 
 def test_destructive_commands_are_blocked() -> None:

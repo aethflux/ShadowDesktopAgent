@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
+from app.services.permission_broker import PermissionDenied, broker
 from app.tools.base import Tool
 from app.tools.terminal import unsafe_command_reason
 
@@ -42,14 +43,17 @@ class ExternalCLITool(Tool):
 
     @staticmethod
     def _resolve_cwd(requested_cwd: str | None) -> Path:
+        """Resolve and existence-check the requested cwd.
+
+        Workspace boundary checks moved to :class:`PermissionBroker` (called
+        from :meth:`arun`). This method intentionally no longer raises on
+        out-of-workspace paths — that's the broker's job, and it talks to the
+        user instead of failing silently.
+        """
         root = settings.command_workspace_root.expanduser().resolve()
         path = Path(requested_cwd).expanduser().resolve() if requested_cwd else root
         if not path.exists() or not path.is_dir():
             raise FileNotFoundError(f"cwd not found: {path}")
-        try:
-            path.relative_to(root)
-        except ValueError as exc:
-            raise PermissionError(f"cwd outside allowed workspace: {path}; allowed root={root}") from exc
         return path
 
     @staticmethod
@@ -59,6 +63,29 @@ class ExternalCLITool(Tool):
         if not isinstance(raw_args, list):
             raise ValueError("args must be a list of strings")
         return [str(arg) for arg in raw_args]
+
+    async def arun(self, **kwargs: Any) -> str:
+        """Async entry point — broker-checks the cwd before delegating to ``run``.
+
+        Mirrors :meth:`TerminalTool.arun`: probe what cwd the sync code path
+        would use, ask the broker, then run synchronously. On deny we return
+        a structured tool-error string instead of raising.
+        """
+        try:
+            target = self._resolve_cwd(kwargs.get("cwd"))
+        except FileNotFoundError as exc:
+            return f"Tool cli.run failed: {exc}"
+
+        try:
+            await broker.check(
+                target,
+                reason=f"cli.run wants to use cwd={target}",
+                tool_name="cli.run",
+            )
+        except PermissionDenied as exc:
+            return f"Tool cli.run blocked: {exc}"
+
+        return self.run(**kwargs)
 
     def run(self, **kwargs: Any) -> str:
         command = str(kwargs["command"]).strip()

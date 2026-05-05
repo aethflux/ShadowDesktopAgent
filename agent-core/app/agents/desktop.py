@@ -5,22 +5,19 @@ from pathlib import Path
 
 from PIL import Image
 
-from app.agents.llm_agent import LLMAgent
+from app.agents.llm_agent import LLMAgent, ProgressCallback
 from app.schemas import ChatAttachment, ObservationState, ToolCallRecord
 from app.services.model_client import ModelClient
+from app.services.persona import builder as persona_builder
 from app.tools.registry import ToolRegistry
 
 
 class DesktopAgent(LLMAgent):
+    """Screen-aware companion. Persona body and role guidance now flow
+    through :class:`PersonaBuilder`; this class only owns the observation
+    pipeline (screen capture, hashing, structured-JSON observation)."""
+
     name = "desktop-agent"
-    system_prompt = (
-        "You are Hoshino, an original screen-aware desktop companion with the presence "
-        "of a gentle but resolute virtual swordswoman partner. "
-        "Do not claim to be any copyrighted anime character. "
-        "Your role is to observe the user's current screen and talk with them naturally about what you see. "
-        "Do not operate the GUI or propose automatic clicks unless the user explicitly asks for abstract strategy only. "
-        "Be warm, concise, visually grounded, brave, encouraging, and conversational."
-    )
 
     def __init__(self) -> None:
         super().__init__()
@@ -108,16 +105,11 @@ class DesktopAgent(LLMAgent):
         observation_state.last_screen_hash = screen_hash
         screenshot_url = self._to_data_url(screenshot_path)
 
-        system_prompt = (
-            "You are Hoshino, a screen-aware digital companion living on the user's desktop. "
-            "You have an original elegant swordswoman-partner persona: calm, protective, honest, and encouraging. "
-            "Do not claim to be or imitate a copyrighted anime character. "
-            "Observe the screen like a thoughtful companion, not an automation tool. "
-            "Return strict JSON with keys: reply, significance, should_speak, topic. "
-            "significance must be low, medium, or high. "
-            "For interval observations, speak only if there is a notable change, user may need encouragement, "
-            "or you can make a helpful short comment. Keep reply under 70 Chinese characters when possible."
-        )
+        # Compose the observation prompt from the same PersonaBuilder so the
+        # user's tone choices apply here too. The dedicated
+        # ``desktop-agent-observation`` role addendum supplies the strict-JSON
+        # output requirement and length cap.
+        system_prompt = persona_builder.render_for_observation()
         user_text = (
             f"Trigger: {trigger}\n"
             f"User/Profile context: {memory_summary}\n"
@@ -170,11 +162,15 @@ class DesktopAgent(LLMAgent):
         attachments: list[ChatAttachment],
         memory_summary: str,
         session_id: str,
+        progress_cb: ProgressCallback | None = None,
     ) -> tuple[str, list[ToolCallRecord]]:
         if attachments:
             return await self._handle_image_attachments(message, attachments, memory_summary)
         if not self._should_observe_screen(message):
-            return await super().handle(message, registry, attachments, memory_summary, session_id)
+            return await super().handle(
+                message, registry, attachments, memory_summary, session_id,
+                progress_cb=progress_cb,
+            )
         reply, tool_calls, _significance, _should_speak, _topic = await self.observe_screen(
             message=message,
             registry=registry,

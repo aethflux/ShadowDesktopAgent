@@ -113,3 +113,102 @@ def test_stream_chat_concatenated_deltas_match_reply(streaming_client) -> None:
     deltas = [payload["text"] for name, payload in events if name == "delta"]
     done_payload = next(payload for name, payload in events if name == "done")
     assert "".join(deltas) == done_payload["reply"]
+
+
+# ---- Live tool progress events (tool_start / tool_end) ------------------- #
+
+
+_UNKNOWN_TOOL = "stream_test.placeholder"
+_scripted_calls = {"count": 0}
+
+
+async def _fake_chat_with_tool_call(self, messages, tools=None, tool_choice="auto", temperature=0.2):
+    """Fake ModelClient.chat that returns a tool call on the first call and a
+    plain reply on the second.
+
+    We deliberately invoke an unknown tool name. ``ToolRegistry.arun`` returns
+    a deterministic error string for that case, so the test stays offline (no
+    real terminal / screen capture) while the agent still goes through the
+    full tool-call code path that emits start/end events.
+    """
+    _scripted_calls["count"] += 1
+    if _scripted_calls["count"] == 1:
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": _UNKNOWN_TOOL,
+                                    "arguments": "{}",
+                                },
+                            }
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 4},
+        }
+    return {
+        "choices": [
+            {
+                "message": {"role": "assistant", "content": "好的，已经处理完了。"},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 6, "completion_tokens": 4},
+    }
+
+
+def test_stream_chat_emits_tool_start_and_end_events() -> None:
+    """When the agent calls a tool, the SSE stream should emit a ``tool_start``
+    *before* the tool runs and a ``tool_end`` after, both carrying the same
+    ``step_id``. The pre-existing ``tool_call`` aggregation event should still
+    fire for back-compat with older renderers."""
+    from app.main import app
+
+    _scripted_calls["count"] = 0  # reset between tests
+
+    with patch("app.services.model_client.ModelClient.chat", new=_fake_chat_with_tool_call), \
+         patch("app.agents.router.RouterAgent.plan", new=_fake_plan):
+        with TestClient(app) as client:
+            with client.stream(
+                "POST",
+                "/api/chat/stream",
+                # Plain greeting — routes to companion-agent and goes through
+                # the LLM tool-call loop (not desktop-agent's observe_screen).
+                json={"message": "你好呀", "session_id": "stream-tool-test"},
+            ) as resp:
+                assert resp.status_code == 200
+                body = "".join(chunk for chunk in resp.iter_text())
+
+    events = _parse_sse(body)
+    names = [name for name, _ in events]
+
+    assert "tool_start" in names, f"tool_start not emitted; saw {names}"
+    assert "tool_end" in names, f"tool_end not emitted; saw {names}"
+    # Strict order: start → end → first delta.
+    assert names.index("tool_start") < names.index("tool_end") < names.index("delta")
+
+    start_payload = next(p for n, p in events if n == "tool_start")
+    end_payload = next(p for n, p in events if n == "tool_end")
+
+    # Both events describe the same step.
+    assert start_payload["step_id"] == end_payload["step_id"]
+    assert start_payload["name"] == _UNKNOWN_TOOL
+    assert end_payload["name"] == _UNKNOWN_TOOL
+    # Unknown tool ⇒ registry surfaces failure; success flag must reflect it.
+    assert end_payload["success"] is False
+    assert isinstance(end_payload["duration_ms"], int)
+
+    # Back-compat: the aggregated tool_call event still fires once after the
+    # live pair, carrying the same step_id.
+    aggregated = [p for n, p in events if n == "tool_call"]
+    assert len(aggregated) == 1
+    assert aggregated[0]["step_id"] == start_payload["step_id"]

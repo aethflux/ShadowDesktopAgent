@@ -21,6 +21,32 @@
         </div>
       </header>
 
+      <!-- Permission request dialog — surfaced by the broker when the agent
+           wants to access a directory outside the workspace. ``hidden`` is
+           toggled from JS once a `permission_request` SSE event arrives. -->
+      <div class="modal-backdrop permission-backdrop" id="permissionBackdrop" hidden>
+        <div class="modal permission-modal" role="alertdialog" aria-labelledby="permissionTitle" aria-modal="true">
+          <header class="modal-head">
+            <h2 id="permissionTitle">Hoshino 想访问你工作区外的目录</h2>
+          </header>
+          <div class="permission-body">
+            <p class="permission-reason" id="permissionReason"></p>
+            <div class="permission-path-wrap">
+              <span class="permission-path-label">路径</span>
+              <code class="permission-path" id="permissionPath"></code>
+            </div>
+            <p class="permission-tip" id="permissionTip">如果这是你信任的目录，可以选择允许；否则建议拒绝。</p>
+            <p class="permission-countdown" id="permissionCountdown" aria-live="polite"></p>
+          </div>
+          <footer class="modal-foot permission-foot">
+            <button class="ghost permission-deny" id="permissionDeny">拒绝</button>
+            <button class="ghost permission-once" id="permissionOnce">仅本次</button>
+            <button class="ghost permission-session" id="permissionSession">本会话允许</button>
+            <button class="permission-always" id="permissionAlways">永久允许</button>
+          </footer>
+        </div>
+      </div>
+
       <!-- Settings modal — opened by the gear icon or via "Settings…" in the
            pet's right-click menu. Hidden by default; CSS handles the fade. -->
       <div class="modal-backdrop" id="settingsBackdrop" hidden>
@@ -32,8 +58,10 @@
           <nav class="settings-tabs" id="settingsTabs">
             <button data-tab="general" class="active">对话与模型</button>
             <button data-tab="pet">桌宠</button>
+            <button data-tab="persona">性格</button>
             <button data-tab="voice">语音</button>
             <button data-tab="memory">记忆 · 行为</button>
+            <button data-tab="permissions">目录权限</button>
             <button data-tab="about">关于</button>
           </nav>
           <div class="settings-body" id="settingsBody"></div>

@@ -4,16 +4,27 @@ from app.agents.llm_agent import LLMAgent
 
 
 class TerminalAgent(LLMAgent):
+    """Terminal/coding specialist. Persona body comes from
+    :class:`PersonaBuilder`; the role-specific terminal guidance (PowerShell,
+    cli.run preference, destructive-command refusal) lives in the
+    ``terminal-agent`` role addendum inside ``services/persona.py`` and is
+    appended automatically by ``LLMAgent.get_system_prompt``.
+
+    The ``get_system_prompt`` override below adds the few extras the
+    role addendum doesn't cover (the runtime cwd hints) so they stay
+    rooted in code rather than in user-editable persona text."""
+
     name = "terminal-agent"
-    system_prompt = (
-        "You are Hoshino's terminal and coding specialist. "
-        "Use terminal.run when shell execution is useful, explain results briefly, and avoid unnecessary commands. "
-        "Prefer cli.run for direct external CLI checks because it does not invoke a shell. "
-        "Use skill.list, skill.create, or skill.install_from_url for managed prompt-skill operations. "
-        "Use mcp.servers and mcp.list_tools to inspect external MCP servers before using their bridged tools. "
-        "On Windows, use PowerShell-compatible commands. Do not invent cwd values; use the current backend working "
-        "directory, project root, agent-core directory, or desktop directory from the user message context. "
-        "Do not use cmd-only syntax such as `dir /b`; use PowerShell commands such as Get-ChildItem. "
-        "The terminal is restricted to the project workspace and will reject destructive file, package, system, "
-        "or permission-changing commands. Do not suggest bypassing these restrictions; suggest read-only alternatives."
-    )
+
+    def get_system_prompt(self) -> str:
+        base = super().get_system_prompt()
+        # Operational knobs that should not be edited from the persona UI:
+        # tool preferences and Windows shell quirks. We append rather than
+        # replace so the user's tone choices still apply.
+        return (
+            f"{base} "
+            "工具偏好：优先使用 cli.run；shell 命令使用 PowerShell 兼容语法（不要用 `dir /b`，用 `Get-ChildItem`）。"
+            "可用 skill.list / skill.create / skill.install_from_url 管理 prompt skills，"
+            "用 mcp.servers / mcp.list_tools 检查外部 MCP。"
+            "不要凭空编造 cwd，使用用户消息上下文里的 backend 当前目录、项目根目录、agent-core 目录或 desktop 目录。"
+        )

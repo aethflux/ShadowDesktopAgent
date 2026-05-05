@@ -646,6 +646,132 @@ button:disabled {
   background: #fffaf0;
 }
 
+/* Plan checklist — emitted by the agent before tools run. Shows what's
+   coming so the user gets a heads-up; items tick off as steps complete. */
+.live-plan {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid #c7dafc;
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+
+.live-plan-summary {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.live-plan-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  counter-reset: plan;
+}
+
+.live-plan-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 4px 0;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.live-plan-item.done {
+  color: var(--muted);
+}
+
+.live-plan-item.done .live-plan-text {
+  text-decoration: line-through;
+}
+
+.live-plan-mark {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.live-plan-item.done .live-plan-mark {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+}
+
+/* Live stdout tail inside a step card — distinct background to make it
+   obvious this is mid-execution, not the final tool result. */
+.tool-progress-tail {
+  border-style: dashed;
+  background: #fafdff;
+  color: #1f4068;
+}
+
+/* Live execution state — pale-blue tint + animated chip while a tool runs. */
+.timeline-item.tool-running {
+  border-color: #bcd5fb;
+  background: #f5f9ff;
+}
+
+.chip.running,
+.step-status.running {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: #c7dafc;
+  animation: pulse-running 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-running {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.step-duration {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tool-running-hint {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 10px 12px;
+  padding: 8px 10px;
+  border: 1px dashed #bcd5fb;
+  border-radius: 6px;
+  background: rgba(232, 240, 255, 0.6);
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.running-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #bcd5fb;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .timeline-head {
   list-style: none;
 }
@@ -1145,4 +1271,329 @@ button:disabled {
 #settingsBtn.compact:hover {
   background: var(--accent-soft);
   transform: rotate(35deg);
+}
+
+/* =========================================================================
+   Permission request dialog (raised by the broker)
+   ========================================================================= */
+
+.permission-backdrop {
+  z-index: 200;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.permission-modal {
+  width: min(520px, calc(100vw - 48px));
+  border-color: #c7dafc;
+  box-shadow: 0 24px 64px rgba(37, 99, 235, 0.22);
+}
+
+.permission-modal .modal-head h2 {
+  font-size: 16px;
+  color: var(--accent);
+}
+
+.permission-body {
+  padding: 18px 22px;
+  display: grid;
+  gap: 10px;
+}
+
+.permission-reason {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.permission-path-wrap {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.permission-path-label {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.permission-path {
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.permission-tip {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.permission-countdown {
+  margin: 0;
+  color: var(--warn);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  min-height: 18px;
+}
+
+.permission-foot {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.permission-foot button {
+  font-size: 13px;
+}
+
+.permission-deny {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.permission-deny:hover {
+  background: var(--danger-soft);
+}
+
+.permission-always {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.permission-always:hover {
+  background: var(--accent-hover);
+}
+
+/* =========================================================================
+   Permissions tab in the settings modal
+   ========================================================================= */
+
+.permissions-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+
+.permission-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.permission-row code {
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.permission-row.locked {
+  background: var(--danger-soft);
+  border-color: #ffd1bc;
+}
+
+.permission-row.locked code {
+  color: var(--danger);
+}
+
+.permission-row .ghost.compact {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.permission-add-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.permission-add-row input {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 12px;
+}
+
+/* =========================================================================
+   Persona tab — preset cards, chips, radio groups
+   ========================================================================= */
+
+.persona-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+
+.persona-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.05s;
+  font: inherit;
+}
+
+.persona-preset:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.persona-preset:active {
+  transform: scale(0.99);
+}
+
+.persona-preset.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.persona-preset strong {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.persona-preset-desc {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.persona-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.persona-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.persona-chip-remove {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.persona-chip-remove:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.empty-inline {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.persona-add-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.persona-add-row input {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.persona-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.persona-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface-soft);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.persona-radio:hover {
+  border-color: var(--accent);
+}
+
+.persona-radio.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.persona-radio input[type="radio"] {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* Long textareas (backstory / custom_system_prompt) inside .field */
+.field textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.field textarea:focus {
+  border-color: var(--accent);
+  outline: 2px solid rgba(37, 99, 235, 0.2);
+  outline-offset: 1px;
 }
