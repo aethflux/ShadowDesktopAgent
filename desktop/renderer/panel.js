@@ -1685,7 +1685,8 @@ function renderGeneralTab() {
   const selectedVisionProvider = effectiveValue("vision_provider") || settingsState.vision_provider || "modelscope";
   const chatModelKey = modelFieldForProvider(selectedProvider);
   const chatDefaultModel = providerDefaultModel(selectedProvider);
-  const groups = el("div", { className: "settings-section" }, [
+  const isAnthropicProvider = selectedProvider === "anthropic";
+  const sections = [
     el("h3", { text: "当前模型" }),
     settingsSummaryCard([
       {
@@ -1729,11 +1730,29 @@ function renderGeneralTab() {
     ),
     el("div", { className: "settings-divider" }),
     el("h3", { text: "稳定性" }),
-    toggleField("启用 Prompt 缓存", "主要用于 Anthropic；其它服务会按自身缓存策略处理。", "enable_prompt_cache"),
     textField("失败重试次数", "遇到 5xx、429 或网络错误时最多重试几次。", "model_max_retries", { type: "number" }),
     textField("重试间隔基准（秒）", "实际等待时间会按指数退避增长。", "model_retry_backoff_seconds", { type: "number" }),
-    textField("Anthropic 回复上限", "只影响 Anthropic 模型的 max_tokens。", "anthropic_max_tokens", { type: "number" }),
-  ]);
+  ];
+
+  if (isAnthropicProvider) {
+    sections.push(
+      el("div", { className: "settings-divider" }),
+      el("h3", { text: "Anthropic 专属" }),
+      toggleField(
+        "启用 Prompt 缓存",
+        "只在 Anthropic provider 下生效，用于缓存稳定的系统提示词前缀。",
+        "enable_prompt_cache",
+      ),
+      textField(
+        "回复上限",
+        "只影响 Anthropic 模型的 max_tokens；其它 Provider 不读取此项。",
+        "anthropic_max_tokens",
+        { type: "number" },
+      ),
+    );
+  }
+
+  const groups = el("div", { className: "settings-section" }, sections);
   settingsBody.appendChild(groups);
 }
 
