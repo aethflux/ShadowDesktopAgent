@@ -199,9 +199,9 @@ class PersonaConfig(BaseModel):
     Stored as a single JSON blob in ``settings.persona_config_json`` so the
     whole structure can be swapped atomically (e.g. when the user clicks
     "apply preset"). All fields have sensible defaults — an empty config is
-    valid and renders to the original Hoshino swordswoman-partner persona.
+    valid and renders to the original Shadow swordswoman-partner persona.
     """
-    name: str = "星野"
+    name: str = "Shadow"
     archetype: str = "swordswoman_partner"
     personality_traits: list[str] = Field(
         default_factory=lambda: ["温柔", "坚定", "略带俏皮", "保护欲强"],

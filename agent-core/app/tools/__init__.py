@@ -1,1 +1,1 @@
-﻿"""Tool implementations."""
+"""Tool implementations."""

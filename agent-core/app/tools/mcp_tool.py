@@ -1,7 +1,7 @@
 """Tool adapters that bridge local tool-calling into MCP servers.
 
 Each ``MCPBridgeTool`` wraps a single MCP tool so the LLM can call it using the
-same OpenAI-style function schema as any other local tool. This is how Hoshino
+same OpenAI-style function schema as any other local tool. This is how Shadow
 actually demonstrates MCP end-to-end — the LLM doesn't know or care that the
 tool is remote.
 """

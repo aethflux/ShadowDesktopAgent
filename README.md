@@ -1,6 +1,6 @@
-# Hoshino Desktop Digital Twin Agent
+# Shadow Desktop Digital Twin Agent
 
-Hoshino 是一个常驻桌面的数字分身 / 桌宠 Agent 项目。它由 FastAPI 后端和 Electron 桌面端组成，支持对话、屏幕观察、语音播报、记忆、工具调用、受限终端、外部 CLI、MCP 和本地 skill 扩展。
+Shadow 是一个常驻桌面的数字分身 / 桌宠 Agent 项目。它由 FastAPI 后端和 Electron 桌面端组成，支持对话、屏幕观察、语音播报、记忆、工具调用、受限终端、外部 CLI、MCP 和本地 skill 扩展。
 
 ## 当前验证状态
 

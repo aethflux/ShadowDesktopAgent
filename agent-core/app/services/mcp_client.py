@@ -58,7 +58,7 @@ class MCPServerProcess:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "hoshino-agent", "version": "0.1.0"},
+                "clientInfo": {"name": "shadow-agent", "version": "0.1.0"},
             },
         )
         # MCP requires a `notifications/initialized` after the handshake.

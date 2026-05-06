@@ -1,6 +1,6 @@
 """Active companion strategy: focus detection and smart nudge generation.
 
-Tracks user engagement over time and decides when Hoshino should proactively
+Tracks user engagement over time and decides when Shadow should proactively
 speak up — offering encouragement when focus is dipping, celebrating when
 things are going well, or gracefully going quiet during deep work.
 
@@ -145,7 +145,7 @@ def compute_engagement(req: ObservationRequest, last_ts: float | None) -> float:
 # --------------------------------------------------------------------------- #
 
 class CompanionStrategy:
-    """Decides when and what Hoshino should say proactively."""
+    """Decides when and what Shadow should say proactively."""
 
     def __init__(self) -> None:
         self._sessions: dict[str, SessionState] = {}
@@ -156,7 +156,7 @@ class CompanionStrategy:
     # ---- Public API ------------------------------------------------------ #
 
     def should_speak(self, request: ObservationRequest) -> bool:
-        """Returns True if Hoshino should proactively comment this turn."""
+        """Returns True if Shadow should proactively comment this turn."""
         state = self._state(request.session_id)
         state.prune_history()
 

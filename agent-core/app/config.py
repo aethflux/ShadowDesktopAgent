@@ -12,7 +12,7 @@ EmbeddingProvider = Literal["openai", "modelscope", "hash"]
 
 
 class Settings(BaseSettings):
-    app_name: str = "Bishoujo Agent Core"
+    app_name: str = "Shadow Agent Core"
     host: str = "127.0.0.1"
     port: int = 8787
 
@@ -139,7 +139,7 @@ class Settings(BaseSettings):
 
     # ---- Persona ----
     # Full PersonaConfig serialised as JSON. Empty string ⇒ defaults
-    # (the original Hoshino swordswoman-partner persona).
+    # (the original Shadow swordswoman-partner persona).
     persona_config_json: str = ""
 
     # ---- Long-task knobs ----

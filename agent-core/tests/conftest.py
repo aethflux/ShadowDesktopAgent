@@ -9,7 +9,7 @@ import pytest
 
 # Redirect memory/skills/screenshot/chroma roots to a scratch dir BEFORE
 # importing app.config. Tests must never touch the developer's real memory.
-_TMP = Path(tempfile.mkdtemp(prefix="hoshino-tests-"))
+_TMP = Path(tempfile.mkdtemp(prefix="shadow-tests-"))
 os.environ.setdefault("MEMORY_DIR", str(_TMP / "memory"))
 os.environ.setdefault("SKILLS_DIR", str(_TMP / "skills"))
 os.environ.setdefault("SCREENSHOTS_DIR", str(_TMP / "screens"))

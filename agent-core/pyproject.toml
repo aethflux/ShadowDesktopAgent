@@ -1,5 +1,5 @@
 [project]
-name = "bishoujo-agent-core"
+name = "shadow-agent-core"
 version = "0.1.0"
 description = "A desktop-pet multi-agent core with GUI automation, memory, and tool calling."
 requires-python = ">=3.11"

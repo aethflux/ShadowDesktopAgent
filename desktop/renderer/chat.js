@@ -14,7 +14,7 @@ form?.addEventListener("submit", (event) => {
   if (!text || input.disabled) return;
   input.value = "";
   setBusy(true);
-  window.bishoujo.submitPetChat(text);
+  window.shadow.submitPetChat(text);
 });
 
 input?.addEventListener("keydown", (event) => {
@@ -23,7 +23,7 @@ input?.addEventListener("keydown", (event) => {
   }
 });
 
-window.bishoujo.onPetChatBusyChanged?.((busy) => {
+window.shadow.onPetChatBusyChanged?.((busy) => {
   setBusy(!!busy);
   if (!busy) {
     input.focus();

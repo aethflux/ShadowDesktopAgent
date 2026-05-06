@@ -111,7 +111,7 @@
     "description": "两轮对话后，系统应能记住第一轮提到的项目名称",
     "turns": [
       {
-        "message": "我最近在做一个 Hoshino Agent 项目",
+        "message": "我最近在做一个 Shadow Agent 项目",
         "attachments": [],
         "expected_delegate": "companion-agent",
         "expected_tool_calls": [],
@@ -123,7 +123,7 @@
         "expected_delegate": "companion-agent",
         "expected_tool_calls": [],
         "forbidden_tools": ["terminal.run", "screen.capture"],
-        "memory_expectation": "Hoshino"
+        "memory_expectation": "Shadow"
       }
     ]
   },

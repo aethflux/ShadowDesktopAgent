@@ -1,7 +1,7 @@
 """Tests for the persona builder.
 
 Covers the three things that can break a user-visible persona swap:
-- The default config (empty JSON) renders to the original Hoshino tone.
+- The default config (empty JSON) renders to the original Shadow tone.
 - A preset round-trips through ``persona_config_json`` and shows up in the
   rendered prompt.
 - Each agent role gets the right addendum so terminal/desktop guidance
@@ -29,11 +29,11 @@ def restore_persona(monkeypatch):
 
 
 def test_default_config_renders_swordswoman_tone(monkeypatch) -> None:
-    """An empty persona JSON string must produce the original 星野 tone."""
+    """An empty persona JSON string must produce the original Shadow tone."""
     monkeypatch.setattr(settings, "persona_config_json", "")
     rendered = builder.render("companion-agent")
 
-    assert "星野" in rendered
+    assert "Shadow" in rendered
     assert "温柔" in rendered
     assert "称呼用户为「你」" in rendered
     # Companion-agent role addendum should be present, terminal's should not.
@@ -53,8 +53,8 @@ def test_preset_swap_changes_name_and_tone(monkeypatch) -> None:
     assert "学姐" in rendered
     assert "知识密度高" in rendered
     assert "称呼用户为「同学」" in rendered
-    # Hoshino-specific bits must be gone after the swap.
-    assert "星野" not in rendered
+    # Shadow-specific bits must be gone after the swap.
+    assert "Shadow" not in rendered
 
 
 def test_role_addenda_are_role_scoped(monkeypatch) -> None:
@@ -74,7 +74,7 @@ def test_role_addenda_are_role_scoped(monkeypatch) -> None:
 def test_invalid_json_falls_back_to_defaults(monkeypatch) -> None:
     monkeypatch.setattr(settings, "persona_config_json", "not-json}")
     rendered = builder.render("companion-agent")
-    assert "星野" in rendered  # didn't crash, returned defaults
+    assert "Shadow" in rendered  # didn't crash, returned defaults
 
 
 def test_invalid_payload_shape_falls_back_to_defaults(monkeypatch) -> None:
@@ -82,7 +82,7 @@ def test_invalid_payload_shape_falls_back_to_defaults(monkeypatch) -> None:
     PersonaConfig and must fall back to defaults rather than raising."""
     monkeypatch.setattr(settings, "persona_config_json", json.dumps(["not", "a", "config"]))
     rendered = builder.render("companion-agent")
-    assert "星野" in rendered
+    assert "Shadow" in rendered
 
 
 def test_custom_system_prompt_is_appended(monkeypatch) -> None:
@@ -130,10 +130,10 @@ def test_builder_reads_settings_per_call(monkeypatch) -> None:
     fresh_builder = PersonaBuilder()
     monkeypatch.setattr(settings, "persona_config_json", "")
     first = fresh_builder.render("companion-agent")
-    assert "星野" in first
+    assert "Shadow" in first
 
     new_config = PersonaConfig(name="测试人格", personality_traits=["试验"])
     monkeypatch.setattr(settings, "persona_config_json", new_config.model_dump_json())
     second = fresh_builder.render("companion-agent")
     assert "测试人格" in second
-    assert "星野" not in second
+    assert "Shadow" not in second

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 from pathlib import Path
@@ -116,7 +116,7 @@ class DesktopAgent(LLMAgent):
             f"Current request: {message}\n"
             f"Previous observation topic: {observation_state.last_topic or 'none'}\n"
             f"Previous comment: {observation_state.last_comment or 'none'}\n"
-            "Look at the screenshot and decide whether Hoshino should say something now."
+            "Look at the screenshot and decide whether Shadow should say something now."
         )
         messages = [
             {"role": "system", "content": system_prompt},

@@ -18,12 +18,12 @@ from app.services.model_client import (
 def test_system_message_becomes_system_block() -> None:
     system_blocks, messages = _openai_messages_to_anthropic(
         [
-            {"role": "system", "content": "You are Hoshino."},
+            {"role": "system", "content": "You are Shadow."},
             {"role": "user", "content": "hi"},
         ]
     )
     assert len(system_blocks) == 1
-    assert system_blocks[0]["text"] == "You are Hoshino."
+    assert system_blocks[0]["text"] == "You are Shadow."
     assert messages == [{"role": "user", "content": "hi"}]
 
 
@@ -123,7 +123,7 @@ def test_anthropic_response_is_reshaped_for_openai_consumers() -> None:
 
 def test_append_json_instruction_targets_last_user_turn() -> None:
     messages = [
-        {"role": "system", "content": "You are Hoshino."},
+        {"role": "system", "content": "You are Shadow."},
         {"role": "assistant", "content": "Previous reply."},
         {"role": "user", "content": "Classify this."},
     ]

@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, screen, shell, MenuItemConstructorOp
 import path from "node:path";
 import fs from "node:fs";
 
-const BACKEND_URL = process.env.BISHOUJO_AGENT_API ?? "http://127.0.0.1:8787";
+const BACKEND_URL = process.env.SHADOW_AGENT_API ?? "http://127.0.0.1:8787";
 
 type Point = { x: number; y: number };
 type DragState = { startMouse: Point; startWindow: Point };
@@ -296,7 +296,7 @@ function createPanelWindow(): BrowserWindow {
     height: 820,
     minWidth: 980,
     minHeight: 700,
-    title: "Hoshino Agent Console",
+    title: "Shadow Agent Console",
     autoHideMenuBar: true,
     show: false,
     webPreferences: {

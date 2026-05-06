@@ -37,7 +37,7 @@ type ProviderListing = {
   }>;
 };
 
-contextBridge.exposeInMainWorld("bishoujo", {
+contextBridge.exposeInMainWorld("shadow", {
   // Chat / observation / TTS — proxy to backend.
   chat: (payload: unknown) => ipcRenderer.invoke("agent:chat", payload),
   observe: (payload: unknown) => ipcRenderer.invoke("agent:observe", payload),
@@ -95,7 +95,7 @@ contextBridge.exposeInMainWorld("bishoujo", {
 
 declare global {
   interface Window {
-    bishoujo: {
+    shadow: {
       chat: (payload: unknown) => Promise<any>;
       observe: (payload: unknown) => Promise<any>;
       tts: (payload: unknown) => Promise<any>;

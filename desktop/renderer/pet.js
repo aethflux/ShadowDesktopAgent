@@ -1,5 +1,5 @@
 /**
- * pet.js — Hoshino Desktop Pet
+ * pet.js — Shadow Desktop Pet
  *
  * Responsibilities:
  *   - Drag-and-drop window movement
@@ -51,7 +51,7 @@ applyVoice(selectedVoice);
 
 async function loadDesktopPrefs() {
   try {
-    desktopPrefs = { ...desktopPrefs, ...(await window.bishoujo.desktopPrefs()) };
+    desktopPrefs = { ...desktopPrefs, ...(await window.shadow.desktopPrefs()) };
     applyAvatar(desktopPrefs.avatar);
     applyVoice(desktopPrefs.petVoice);
   } catch (error) {
@@ -59,7 +59,7 @@ async function loadDesktopPrefs() {
   }
 }
 
-window.bishoujo.onDesktopPrefsChanged?.((prefs) => {
+window.shadow.onDesktopPrefsChanged?.((prefs) => {
   desktopPrefs = { ...desktopPrefs, ...prefs };
   applyAvatar(desktopPrefs.avatar);
   applyVoice(desktopPrefs.petVoice);
@@ -177,13 +177,13 @@ petShell?.addEventListener("pointerdown", (event) => {
   dragStart = toPoint(event);
   didDrag = false;
   petShell.setPointerCapture(event.pointerId);
-  window.bishoujo.startPetDrag(dragStart);
+  window.shadow.startPetDrag(dragStart);
 });
 
 petShell?.addEventListener("pointermove", (event) => {
   if (!dragStart) return;
   if (distanceFromStart(event) > 4) didDrag = true;
-  window.bishoujo.movePetDrag(toPoint(event));
+  window.shadow.movePetDrag(toPoint(event));
 });
 
 petShell?.addEventListener("pointerup", (event) => {
@@ -192,14 +192,14 @@ petShell?.addEventListener("pointerup", (event) => {
   if (petShell.hasPointerCapture(event.pointerId)) {
     petShell.releasePointerCapture(event.pointerId);
   }
-  window.bishoujo.endPetDrag();
-  if (!didDrag) window.bishoujo.togglePanel();
+  window.shadow.endPetDrag();
+  if (!didDrag) window.shadow.togglePanel();
   dragStart = null;
   didDrag = false;
 });
 
 petShell?.addEventListener("pointercancel", () => {
-  window.bishoujo.endPetDrag();
+  window.shadow.endPetDrag();
   dragStart = null;
   didDrag = false;
 });
@@ -225,7 +225,7 @@ function showBubble(text, sticky = false) {
 
 function recordCompanionHistory(role, text, meta = "") {
   if (!text) return;
-  window.bishoujo.recordPanelHistory?.({
+  window.shadow.recordPanelHistory?.({
     sessionId: COMPANION_SESSION_ID,
     title: COMPANION_SESSION_TITLE,
     fixed: true,
@@ -382,7 +382,7 @@ async function say(text, { source = "chat" } = {}) {
     stopSpeech();
     return;
   }
-  const ttsResp = await window.bishoujo.tts({ text: spoken, voice: selectedVoice });
+  const ttsResp = await window.shadow.tts({ text: spoken, voice: selectedVoice });
   if (!canSpeak(source)) {
     stopSpeech();
     return;
@@ -415,7 +415,7 @@ async function observe(trigger = "interval") {
   // Watching is already sticky once enabled — no transient state change.
   try {
     const eng = _engagementState();
-    const response = await window.bishoujo.observe({
+    const response = await window.shadow.observe({
       session_id: COMPANION_SESSION_ID,
       trigger,
       focus: trigger === "manual"
@@ -456,12 +456,12 @@ async function handlePetChat(text) {
   text = String(text || "").trim();
   if (!text) return;
   if (userTurnActive) {
-    window.bishoujo.setPetChatBusy?.(false);
+    window.shadow.setPetChatBusy?.(false);
     return;
   }
 
   userTurnActive = true;
-  window.bishoujo.setPetChatBusy?.(true);
+  window.shadow.setPetChatBusy?.(true);
   suppressObserveUntil = Date.now() + 60_000;
   observeRunVersion++;
   recordCompanionHistory("user", text, "桌宠输入");
@@ -470,7 +470,7 @@ async function handlePetChat(text) {
   showBubble("我在想...");
 
   try {
-    const response = await window.bishoujo.chat({
+    const response = await window.shadow.chat({
       message: text,
       session_id: COMPANION_SESSION_ID,
       attachments: [],
@@ -499,14 +499,14 @@ async function handlePetChat(text) {
     recordCompanionHistory("assistant", `请求失败：${message}`, "桌宠输入 · error");
   } finally {
     userTurnActive = false;
-    window.bishoujo.setPetChatBusy?.(false);
+    window.shadow.setPetChatBusy?.(false);
     suppressObserveUntil = Date.now() + 20_000;
   }
 }
 
-window.bishoujo.onPetChatSubmit?.((text) => {
+window.shadow.onPetChatSubmit?.((text) => {
   handlePetChat(text).catch((error) => {
-    window.bishoujo.setPetChatBusy?.(false);
+    window.shadow.setPetChatBusy?.(false);
     setState(STATE.ERROR, { revertAfter: 2800 });
     showBubble(`请求失败：${error && error.message ? error.message : String(error)}`, true);
   });
@@ -519,7 +519,7 @@ window.bishoujo.onPetChatSubmit?.((text) => {
 function setWatching(next) {
   watching = next;
   watchDot?.classList.toggle("active", watching);
-  window.bishoujo.setWatching(watching);
+  window.shadow.setWatching(watching);
   if (observeTimer) {
     clearInterval(observeTimer);
     observeTimer = null;
@@ -535,13 +535,13 @@ function setWatching(next) {
   }
 }
 
-window.bishoujo.onWatchingChanged((next) => {
+window.shadow.onWatchingChanged((next) => {
   if (next !== watching) setWatching(next);
 });
 
 petShell?.addEventListener("contextmenu", (event) => {
   event.preventDefault();
-  window.bishoujo.showPetMenu();
+  window.shadow.showPetMenu();
 });
 
 petShell?.addEventListener("dblclick", (event) => {

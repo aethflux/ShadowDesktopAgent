@@ -37,7 +37,7 @@ async def test_text_only_model_rejects_image_messages(monkeypatch: pytest.Monkey
 
     client = ModelClient()
     messages = [
-        {"role": "system", "content": "You are Hoshino."},
+        {"role": "system", "content": "You are Shadow."},
         {
             "role": "user",
             "content": [

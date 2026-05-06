@@ -5,7 +5,7 @@ or silent ``except Exception: pass`` across the codebase. All modules pull
 their logger from here, which guarantees one root configuration and one
 stream format.
 
-Log level is read from the ``HOSHINO_LOG_LEVEL`` env var (default ``INFO``)
+Log level is read from the ``SHADOW_LOG_LEVEL`` env var (default ``INFO``)
 so operators can crank it to ``DEBUG`` without code changes.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ def _configure_root() -> None:
     global _CONFIGURED
     if _CONFIGURED:
         return
-    level_name = os.environ.get("HOSHINO_LOG_LEVEL", "INFO").upper()
+    level_name = os.environ.get("SHADOW_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(
@@ -30,7 +30,7 @@ def _configure_root() -> None:
             datefmt="%H:%M:%S",
         )
     )
-    root = logging.getLogger("hoshino")
+    root = logging.getLogger("shadow")
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level)
@@ -39,8 +39,8 @@ def _configure_root() -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Return a namespaced logger under the ``hoshino`` root."""
+    """Return a namespaced logger under the ``shadow`` root."""
     _configure_root()
-    if name.startswith("hoshino."):
+    if name.startswith("shadow."):
         return logging.getLogger(name)
-    return logging.getLogger(f"hoshino.{name}")
+    return logging.getLogger(f"shadow.{name}")

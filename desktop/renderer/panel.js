@@ -1,5 +1,5 @@
 /**
- * panel.js — Hoshino Agent Console
+ * panel.js — Shadow Agent Console
  *
  * Features:
  *   - Safe DOM construction (no innerHTML for dynamic content) +
@@ -18,8 +18,8 @@ const DEFAULT_SESSION_ID = "desktop-session";
 const COMPANION_SESSION_ID = "pet-companion-session";
 const COMPANION_SESSION_TITLE = "桌宠陪伴";
 const COMPANION_HISTORY_RETENTION_MS = 5 * 60_000;
-const SESSIONS_INDEX_KEY = "hoshino.panel.sessions.v2";
-const HISTORY_KEY_PREFIX = "hoshino.panel.history.";
+const SESSIONS_INDEX_KEY = "shadow.panel.sessions.v2";
+const HISTORY_KEY_PREFIX = "shadow.panel.history.";
 const HISTORY_LIMIT = 80;
 
 const chatLog = document.getElementById("chatLog");
@@ -431,7 +431,7 @@ function importPanelHistoryEntry(entry) {
 
 async function syncPanelHistoryEvents() {
   try {
-    const events = await window.bishoujo.listPanelHistoryEvents?.();
+    const events = await window.shadow.listPanelHistoryEvents?.();
     for (const entry of events || []) {
       importPanelHistoryEntry(entry);
     }
@@ -871,7 +871,7 @@ async function fileToDataUrl(file) {
 }
 
 async function loadCapabilities() {
-  const capabilities = await window.bishoujo.capabilities();
+  const capabilities = await window.shadow.capabilities();
   renderCapabilities(capabilities);
 }
 
@@ -926,7 +926,7 @@ async function streamChat(payload, { onEvent, signal } = {}) {
 function openPermissionDialog(data) {
   if (!permissionBackdrop || !data?.request_id) return;
   activePermissionRequestId = data.request_id;
-  permissionReason.textContent = data.reason || "Hoshino 想访问一个目录";
+  permissionReason.textContent = data.reason || "Shadow 想访问一个目录";
   permissionPath.textContent = data.path || "(unknown path)";
   permissionTip.textContent = data.tool_name
     ? `工具：${data.tool_name}。如果这是你信任的目录，可以选择允许；否则建议拒绝。`
@@ -1043,7 +1043,7 @@ async function runOneShot(payload) {
   const thinking = appendThinkingIndicator();
   let response;
   try {
-    response = await window.bishoujo.chat(payload);
+    response = await window.shadow.chat(payload);
   } finally {
     thinking.remove();
   }
@@ -1321,7 +1321,7 @@ voiceBtn.addEventListener("click", () => {
 
 renderSessions();
 reloadHistoryView();
-window.bishoujo.onPanelHistoryEvent?.((entry) => importPanelHistoryEntry(entry));
+window.shadow.onPanelHistoryEvent?.((entry) => importPanelHistoryEntry(entry));
 syncPanelHistoryEvents().then(() => {
   history = loadHistory(activeSessionId);
   reloadHistoryView();
@@ -1404,8 +1404,8 @@ settingsRefresh?.addEventListener("click", () => reloadSettings());
 settingsSave?.addEventListener("click", () => saveSettings());
 
 // The pet's right-click menu can deep-link into a specific tab.
-window.bishoujo.onOpenSettings?.((tab) => openSettings(tab || "general"));
-window.bishoujo.onDesktopPrefsChanged?.((prefs) => {
+window.shadow.onOpenSettings?.((tab) => openSettings(tab || "general"));
+window.shadow.onDesktopPrefsChanged?.((prefs) => {
   desktopPrefsState = { ...(desktopPrefsState || {}), ...prefs };
   if (!settingsBackdrop?.hidden && activeTab === "pet") {
     renderSettingsBody();
@@ -1445,9 +1445,9 @@ async function reloadSettings() {
   setSettingsStatus("正在加载设置...");
   try {
     const [agent, providers, desktopPrefs] = await Promise.all([
-      window.bishoujo.agentSettings(),
-      window.bishoujo.listProviders(),
-      window.bishoujo.desktopPrefs(),
+      window.shadow.agentSettings(),
+      window.shadow.listProviders(),
+      window.shadow.desktopPrefs(),
     ]);
     settingsState = { ...agent };
     desktopPrefsState = { ...desktopPrefs };
@@ -1486,10 +1486,10 @@ async function saveSettings() {
   try {
     const [updatedAgent, updatedDesktop] = await Promise.all([
       Object.keys(agentPatch).length
-        ? window.bishoujo.updateAgentSettings(agentPatch)
+        ? window.shadow.updateAgentSettings(agentPatch)
         : Promise.resolve(settingsState),
       Object.keys(desktopPatch).length
-        ? window.bishoujo.updateDesktopPrefs(desktopPatch)
+        ? window.shadow.updateDesktopPrefs(desktopPatch)
         : Promise.resolve(desktopPrefsState),
     ]);
     settingsState = { ...updatedAgent };
@@ -1948,7 +1948,7 @@ function renderPathAddRow(name, placeholder) {
 
 function personaConfigDefaults() {
   return {
-    name: "星野",
+    name: "Shadow",
     archetype: "swordswoman_partner",
     personality_traits: ["温柔", "坚定", "略带俏皮", "保护欲强"],
     speaking_style: "简洁有力，温暖有节制",

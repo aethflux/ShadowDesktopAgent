@@ -1,1 +1,1 @@
-﻿"""Core services."""
+"""Core services."""
