@@ -1,0 +1,31 @@
+[
+  {"message": "别老想着帮我跑命令，安静陪我待会儿", "expected_intent": "conversation", "expected_delegate": "companion-agent", "trap": "contains 命令/跑 but is chit-chat"},
+  {"message": "我最近在学做饭，和写代码没关系", "expected_intent": "conversation", "expected_delegate": "companion-agent", "trap": "contains 代码 but is chit-chat"},
+  {"message": "今天 git 上那个同事又摸鱼了，哈哈", "expected_intent": "conversation", "expected_delegate": "companion-agent", "trap": "contains git but is chit-chat"},
+  {"message": "你的声音真好听呀", "expected_intent": "conversation", "expected_delegate": "companion-agent", "trap": "contains 声音 but is a compliment"},
+  {"message": "我的屏幕保护程序怎么关掉", "expected_intent": "conversation", "expected_delegate": "companion-agent", "trap": "contains 屏幕/程序 but is a how-to question"},
+  {"message": "最近 bug 缠身，心态有点崩", "expected_intent": "conversation", "expected_delegate": "companion-agent", "trap": "contains bug but is venting"},
+
+  {"message": "当前目录下都有些啥", "expected_intent": "terminal", "expected_delegate": "terminal-agent", "trap": "no terminal keyword, implicit ls"},
+  {"message": "帮我把这个仓库克隆到本地", "expected_intent": "terminal", "expected_delegate": "terminal-agent", "trap": "no keyword for git clone"},
+  {"message": "run 一下这个项目看看能不能起来", "expected_intent": "terminal", "expected_delegate": "terminal-agent", "trap": "english run + 项目"},
+  {"message": "yo spin up the dev server", "expected_intent": "terminal", "expected_delegate": "terminal-agent", "trap": "no standard keyword, slang"},
+
+  {"message": "瞅一眼我现在在忙啥", "expected_intent": "screen_observation", "expected_delegate": "desktop-agent", "trap": "口语 瞅 instead of 看看"},
+  {"message": "can you check what's on my display right now", "expected_intent": "screen_observation", "expected_delegate": "desktop-agent", "trap": "display not screen"},
+  {"message": "what am I looking at right now", "expected_intent": "screen_observation", "expected_delegate": "desktop-agent", "trap": "no literal screen keyword"},
+
+  {"message": "帮我看看屏幕上的代码哪里错了", "expected_intent": "screen_observation", "expected_delegate": "desktop-agent", "trap": "ambiguous screen vs coding; 看屏幕 leads"},
+  {"message": "在终端里看看屏幕上的输出", "expected_intent": "terminal", "expected_delegate": "terminal-agent", "trap": "ambiguous terminal vs screen; 终端 leads"},
+  {"message": "记住我习惯用 vim 写代码", "expected_intent": "memory_profile", "expected_delegate": "companion-agent", "trap": "ambiguous memory vs coding; 记住 leads"},
+  {"message": "帮我改一下人设，然后记住这个设定", "expected_intent": "persona", "expected_delegate": "companion-agent", "trap": "persona vs memory; both -> companion"},
+
+  {"message": "以后你说话能不能温柔一点", "expected_intent": "persona", "expected_delegate": "companion-agent", "trap": "persona intent without 人设 keyword"},
+  {"message": "我跟你说过我女儿的事，你还记得吗", "expected_intent": "memory_profile", "expected_delegate": "companion-agent", "trap": "记得 not 记住"},
+  {"message": "read this out loud please", "expected_intent": "voice", "expected_delegate": "companion-agent", "trap": "english voice phrasing"},
+
+  {"message": "把代码里的这个函数优化一下", "expected_intent": "coding", "expected_delegate": "terminal-agent", "trap": "should pass — multi coding keywords"},
+  {"message": "跑一下 pytest 然后把失败的用例修了", "expected_intent": "terminal", "expected_delegate": "terminal-agent", "trap": "terminal + coding both -> terminal-agent"},
+  {"message": "帮我把刚才屏幕里的报错记下来", "expected_intent": "screen_observation", "expected_delegate": "desktop-agent", "trap": "tri-intent screen+memory+coding"},
+  {"message": "我想让你以后每天主动看屏幕提醒我休息", "expected_intent": "continuous_companion", "expected_delegate": "desktop-agent", "trap": "continuous companion phrased indirectly"}
+]

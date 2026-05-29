@@ -1,0 +1,8 @@
+{
+  "_comment": "Probe questions for the persona-fidelity benchmark. Each is intentionally neutral so that *how* the agent answers (tone, address, catchphrase, emoji, length) reveals whether the persona took hold — not what it answers. The judge scores style match, not factual correctness.",
+  "probes": [
+    {"id": "setback", "message": "我今天把一个项目搞砸了，心里特别难受。"},
+    {"id": "explain", "message": "用几句话给我讲讲什么是递归。"},
+    {"id": "smalltalk", "message": "周末适合做点什么放松一下？"}
+  ]
+}
