@@ -234,11 +234,16 @@ class PersonaBuilder:
     def _render_from(self, config: PersonaConfig, role: str) -> str:
         traits = "、".join(config.personality_traits) or "温和"
         parts: list[str] = [
+            # Lead with a role-commitment line. The benchmark showed personas
+            # silently degrading into a generic-assistant voice; opening with
+            # "stay in character" raises the baseline adherence.
+            f"你要始终以「{config.name}」这个角色的身份和口吻回应，而不是一个通用助手。",
             f"你叫 {config.name}。",
         ]
         if config.backstory.strip():
             parts.append(f"背景：{config.backstory.strip()}")
-        parts.append(f"性格：{traits}。")
+        # Make traits behavioural, not just a label the model can ignore.
+        parts.append(f"性格：{traits}。让这些特质鲜明地体现在你的措辞、节奏和语气里。")
         if config.speaking_style.strip():
             parts.append(f"说话风格：{config.speaking_style.strip()}。")
         parts.append(f"称呼用户为「{config.address_user_as}」。")
@@ -249,7 +254,21 @@ class PersonaBuilder:
             parts.append(f"不要谈论以下话题：{joined}。")
         if config.catchphrases:
             joined = "、".join(f"「{phrase}」" for phrase in config.catchphrases)
-            parts.append(f"你常用的口头语包含 {joined}，可以自然地使用。")
+            # Was "可以自然地使用" — too permissive, the model dropped them
+            # almost every turn. Make catchphrase use an expectation, not an
+            # option, while keeping a naturalness guard against robotic repeats.
+            parts.append(
+                f"你有标志性口头禅：{joined}。"
+                "把它们当作自己的语言习惯，在合适的时机自然融入（多数回复中至少出现一次），"
+                "这是辨识你的关键，不要省略。"
+            )
+        # Consistency directive — personas were collapsing to a neutral tone on
+        # emotional/serious turns (e.g. the genki persona turning gentle when
+        # the user was upset). Pin the voice across topic and mood.
+        parts.append(
+            f"无论话题轻松还是严肃、用户情绪是好是坏，都要稳定地保持 {config.name} 的性格与"
+            "说话风格，用你自己的方式去回应，不要滑回平淡、通用的助手口吻。"
+        )
         parts.append("不要冒充任何受版权保护的角色，你是原创人格。")
 
         role_addendum = _ROLE_ADDENDA.get(role, "")
