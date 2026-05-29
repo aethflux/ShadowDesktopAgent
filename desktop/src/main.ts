@@ -50,7 +50,8 @@ const DEFAULT_PREFS: DesktopPrefs = {
 const AVATAR_OPTIONS = [
   { id: "streamer", label: "虚拟主播" },
   { id: "swordswoman", label: "见习剑士" },
-  { id: "cyber", label: "电子搭档" }
+  { id: "cyber", label: "电子搭档" },
+  { id: "senpai", label: "学姐" }
 ];
 
 const PET_VOICE_OPTIONS = [

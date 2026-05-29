@@ -35,66 +35,15 @@
         <div class="heart h2"></div>
       </div>
 
-      <!-- CSS-only avatar — pointer-events:none so the shell receives clicks -->
+      <!-- Image avatar — pointer-events:none so the shell receives clicks -->
       <div class="avatar" id="petBody" aria-label="Shadow digital companion" style="pointer-events:none;">
-        <div class="ahoge"></div>
-        <div class="hair hair-back"></div>
-        <div class="side-lock left">
-          <div class="lock-tip"></div>
-        </div>
-        <div class="side-lock right">
-          <div class="lock-tip"></div>
-        </div>
-        <div class="body">
-          <div class="cape"></div>
-          <div class="torso">
-            <div class="sailor-collar">
-              <div class="collar-stripe"></div>
-              <div class="collar-stripe two"></div>
-            </div>
-            <div class="ribbon">
-              <div class="ribbon-wing left"></div>
-              <div class="ribbon-wing right"></div>
-              <div class="ribbon-knot"></div>
-              <div class="ribbon-tail left"></div>
-              <div class="ribbon-tail right"></div>
-            </div>
-            <div class="chest-line"></div>
-            <div class="skirt">
-              <div class="skirt-frill"></div>
-            </div>
-          </div>
-          <div class="arm left"></div>
-          <div class="arm right"></div>
-          <div class="rapier"></div>
-        </div>
-        <div class="head">
-          <div class="face">
-            <div class="blush left"></div>
-            <div class="blush right"></div>
-            <div class="eye left">
-              <div class="iris"></div>
-              <div class="pupil"></div>
-              <div class="hl big"></div>
-              <div class="hl small"></div>
-            </div>
-            <div class="eye right">
-              <div class="iris"></div>
-              <div class="pupil"></div>
-              <div class="hl big"></div>
-              <div class="hl small"></div>
-            </div>
-            <div class="mouth" id="mouth"></div>
-          </div>
-          <div class="bangs">
-            <div class="bang center"></div>
-            <div class="bang side-left"></div>
-            <div class="bang side-right"></div>
-          </div>
-          <div class="hair-clip"></div>
-          <div class="headset"></div>
-          <div class="mic"></div>
-        </div>
+        <img
+          class="avatar-standee"
+          id="avatarImage"
+          src="./assets/avatars/shadow-streamer.png"
+          alt=""
+          draggable="false"
+        />
       </div>
     </div>
     <script type="module" src="./pet.js"></script>

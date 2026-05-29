@@ -1351,7 +1351,18 @@ const PET_AVATAR_OPTIONS = [
   { value: "streamer", label: "虚拟主播" },
   { value: "swordswoman", label: "见习剑士" },
   { value: "cyber", label: "电子搭档" },
+  { value: "senpai", label: "学姐" },
 ];
+// Persona archetype → pet avatar sprite. Applied when the user clicks a
+// persona preset so the on-screen character matches the chosen personality.
+// Archetypes without a dedicated sprite (butler / gentle_onee) are omitted —
+// we leave the current avatar untouched rather than forcing a visual mismatch.
+const ARCHETYPE_TO_AVATAR = {
+  swordswoman_partner: "swordswoman",
+  study_senpai: "senpai",
+  cyber_ai: "cyber",
+  genki_kouhai: "streamer",
+};
 const PET_VOICE_OPTIONS = [
   { value: "warm-girl", label: "清亮女声" },
   { value: "sweet-lady", label: "甜美女声" },
@@ -1760,7 +1771,7 @@ function renderPetTab() {
   const voiceEnabled = !!effectiveValue("voiceEnabled");
   const groups = el("div", { className: "settings-section" }, [
     el("h3", { text: "桌宠外观" }),
-    selectField("形象", "也可以在桌宠右键菜单里快速切换。", "avatar", PET_AVATAR_OPTIONS),
+    selectField("形象", "切换“性格”预设时会自动匹配形象；这里可手动覆盖，也能在桌宠右键菜单快速切换。", "avatar", PET_AVATAR_OPTIONS),
     selectField("桌宠音色", "控制桌宠气泡回复使用的 TTS 音色。", "petVoice", PET_VOICE_OPTIONS),
     el("div", { className: "settings-divider" }),
     el("h3", { text: "桌面说话行为" }),
@@ -2110,7 +2121,18 @@ function renderPersonaPresetRow() {
     );
     card.addEventListener("click", () => {
       commitPersonaConfig(() => ({ ...preset.config }), { rerender: true });
-      setSettingsStatus(`已套用预设：${preset.label}（保存后生效）`, "dirty");
+      // Keep the on-screen sprite in sync with the chosen personality. Only
+      // for archetypes that have a matching sprite; others keep the current
+      // avatar so we never show a mismatched image. ``setPending`` routes the
+      // "avatar" key into the desktop-prefs patch (it's in DESKTOP_PREF_KEYS),
+      // so it ships together with the persona on save.
+      const mappedAvatar = ARCHETYPE_TO_AVATAR[preset.id];
+      const syncedAvatar = mappedAvatar && effectiveValue("avatar") !== mappedAvatar;
+      if (syncedAvatar) setPending("avatar", mappedAvatar);
+      setSettingsStatus(
+        `已套用预设：${preset.label}${syncedAvatar ? "，已同步桌宠形象" : ""}（保存后生效）`,
+        "dirty",
+      );
     });
     row.appendChild(card);
   }

@@ -14,14 +14,21 @@
 const petShell = document.getElementById("petShell");
 const bubble = document.getElementById("petBubble");
 const watchDot = document.getElementById("watchDot");
+const avatarImage = document.getElementById("avatarImage");
 
 const BACKEND_URL = "http://127.0.0.1:8787";
 const COMPANION_SESSION_ID = "pet-companion-session";
 const COMPANION_SESSION_TITLE = "桌宠陪伴";
 const COMPANION_HISTORY_RETENTION_MS = 5 * 60_000;
 const OBSERVE_INTERVAL_MS = 45_000;
-const AVATAR_CLASSES = ["avatar-streamer", "avatar-swordswoman", "avatar-cyber"];
-const AVATAR_OPTIONS = ["streamer", "swordswoman", "cyber"];
+const AVATAR_ASSETS = {
+  streamer: "./assets/avatars/shadow-streamer.png",
+  swordswoman: "./assets/avatars/shadow-swordswoman.png",
+  cyber: "./assets/avatars/shadow-cyber.png",
+  senpai: "./assets/avatars/shadow-senpai.png",
+};
+const AVATAR_OPTIONS = Object.keys(AVATAR_ASSETS);
+const AVATAR_CLASSES = AVATAR_OPTIONS.map((name) => `avatar-${name}`);
 const PET_VOICE_OPTIONS = ["warm-girl", "sweet-lady", "gentleman", "storyteller"];
 
 let selectedAvatar = "streamer";
@@ -40,6 +47,23 @@ function applyAvatar(value) {
   selectedAvatar = AVATAR_OPTIONS.includes(value) ? value : "streamer";
   petShell?.classList.remove(...AVATAR_CLASSES);
   petShell?.classList.add(`avatar-${selectedAvatar}`);
+  if (avatarImage) {
+    // Guard against a missing/renamed sprite leaving a broken-image icon on
+    // the transparent desktop window. Fall back to the default sprite once;
+    // if even that fails, hide the <img> so only the aura/effects remain.
+    avatarImage.dataset.fallback = "";
+    avatarImage.onerror = () => {
+      if (avatarImage.dataset.fallback === "1") {
+        avatarImage.style.visibility = "hidden";
+        return;
+      }
+      avatarImage.dataset.fallback = "1";
+      avatarImage.src = AVATAR_ASSETS.streamer;
+    };
+    avatarImage.style.visibility = "";
+    avatarImage.src = AVATAR_ASSETS[selectedAvatar];
+    avatarImage.alt = `${selectedAvatar} avatar`;
+  }
 }
 
 function applyVoice(value) {
