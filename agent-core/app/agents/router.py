@@ -14,6 +14,22 @@ class IntentRule:
     tools: tuple[str, ...] = ()
 
 
+# High-specificity keywords: when the *winning* intent matched one of these,
+# the classification is near-certain and the orchestrator may skip the LLM
+# second-opinion (``router.plan``) to save a model call. Kept deliberately
+# small and unambiguous — generic words like ``git``/``代码``/``屏幕`` are
+# excluded precisely because they show up in chit-chat and multi-intent
+# sentences where the LLM tiebreaker still earns its keep.
+_DECISIVE_KEYWORDS: frozenset[str] = frozenset({
+    # terminal — almost always a genuine execution request
+    "pytest", "uvicorn", "npm", "pip", "powershell", "shell", "命令行", "克隆", "clone",
+    # screen — capture verbs are unambiguous
+    "截图", "截屏", "截个图", "截个屏", "screenshot",
+    # persona / voice — domain-specific nouns
+    "人设", "persona", "tts", "asr",
+})
+
+
 class RouterAgent:
     def __init__(self) -> None:
         self.model_client = ModelClient()
@@ -25,8 +41,10 @@ class RouterAgent:
                     "屏幕", "截图", "截个图", "截个屏", "截屏", "屏幕观察",
                     "观察", "看屏幕", "看看屏幕", "当前界面",
                     "当前窗口", "我的窗口", "我当前的窗口", "画面",
-                    "你看到了什么", "帮我看看", "screen", "screenshot", "what do you see",
-                    "look at my screen", "window", "user interface",
+                    "你看到了什么", "帮我看看", "看一眼", "瞅", "瞅一眼",
+                    "screen", "screenshot", "what do you see",
+                    "look at my screen", "look at my", "window", "user interface",
+                    "display", "my display", "looking at", "what am i looking",
                 ),
                 tools=("screen.capture",),
             ),
@@ -35,7 +53,8 @@ class RouterAgent:
                 delegated_to="desktop-agent",
                 keywords=(
                     "持续观察", "持续陪伴", "主动评论", "主动提醒", "一直看", "陪着我",
-                    "数字分身", "常驻", "watch continuously", "companion mode",
+                    "数字分身", "常驻", "主动看屏幕", "每天看", "盯着我", "盯着屏幕",
+                    "提醒我休息", "watch continuously", "companion mode",
                 ),
                 tools=("screen.capture",),
             ),
@@ -46,6 +65,8 @@ class RouterAgent:
                     "命令行", "终端", "shell", "powershell", "cmd", "terminal", "运行命令",
                     "执行命令", "npm", "pip", "git", "pytest", "uvicorn", "ls", "dir", "cd ",
                     "cli", "外部cli", "外部命令",
+                    "目录", "路径", "仓库", "克隆", "clone", "spin up", "dev server",
+                    "run ", "当前目录", "工作目录",
                 ),
                 tools=("terminal.run", "terminal.reset", "cli.run"),
             ),
@@ -73,7 +94,7 @@ class RouterAgent:
                 intent="memory_profile",
                 delegated_to="companion-agent",
                 keywords=(
-                    "记住", "别忘了", "我叫", "叫我", "我喜欢", "我不喜欢", "我的目标",
+                    "记住", "记得", "别忘了", "我叫", "叫我", "我喜欢", "我不喜欢", "我的目标",
                     "我是", "我在做", "最近在做", "remember", "call me", "my goal",
                 ),
             ),
@@ -83,6 +104,21 @@ class RouterAgent:
                 keywords=(
                     "人设", "人格", "性格", "形象", "桌宠形象", "数字人", "角色",
                     "亚丝娜", "剑士", "persona", "character", "avatar",
+                    "说话温柔", "温柔一点", "温柔点", "你说话能不能", "改改你的",
+                ),
+            ),
+            # Conversation/chit-chat: emotional or social cues. These let a
+            # message that *contains* an operational keyword but is really
+            # venting/banter (e.g. "今天 git 上同事摸鱼了哈哈") score for
+            # conversation and outweigh the accidental tool-intent match.
+            IntentRule(
+                intent="conversation",
+                delegated_to="companion-agent",
+                keywords=(
+                    "难受", "沮丧", "心态", "好累", "好烦", "郁闷", "难过",
+                    "哈哈", "嘻嘻", "笑死", "摸鱼", "吐槽", "缠身",
+                    "陪我", "陪聊", "聊聊", "聊会儿", "陪陪我",
+                    "真好听", "好可爱", "没关系", "真贴心", "和写代码没关系",
                 ),
             ),
         )
@@ -120,10 +156,16 @@ class RouterAgent:
         confidence = min(0.95, 0.38 + score * 0.16)
         matched_signals = signals.get(intent, [])
         unique_tools = list(dict.fromkeys(tools.get(intent, [])))
+        # "Decisive" means the winning intent matched a near-unambiguous
+        # keyword — used downstream to skip the LLM router. Crucially this is
+        # keyword-driven, not score-driven: a multi-intent sentence can have a
+        # high score yet remain ambiguous, so it must NOT be decisive.
+        decisive = any(sig in _DECISIVE_KEYWORDS for sig in matched_signals)
         return IntentMatch(
             intent=intent,
             delegated_to=delegates.get(intent, "companion-agent"),
             confidence=confidence,
+            decisive=decisive,
             reasoning=(
                 f"Local intent matched `{intent}` via signals: "
                 f"{', '.join(matched_signals[:6]) or 'none'}."

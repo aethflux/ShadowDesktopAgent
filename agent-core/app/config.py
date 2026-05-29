@@ -157,6 +157,15 @@ class Settings(BaseSettings):
     # runaway command from drowning the SSE stream. Counted in characters.
     terminal_stream_max_chars: int = 8000
 
+    # ---- Routing cost control ----
+    # When the local keyword router matches a high-specificity, near-
+    # unambiguous keyword (e.g. ``pytest``/``截图``/``人设``), skip the LLM
+    # second-opinion (``router.plan``) and save one model call per turn.
+    # Disable to always run the LLM router (more robust on edge phrasings,
+    # but ~2x routing cost). Multi-intent / vague messages are never treated
+    # as decisive, so they still get the LLM second opinion.
+    router_skip_plan_when_decisive: bool = True
+
     # ---- Workspace permission broker ----
     # When the agent needs to access a directory outside the project workspace,
     # the broker surfaces a ``permission_request`` SSE event and awaits a user

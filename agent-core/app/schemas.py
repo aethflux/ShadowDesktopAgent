@@ -70,6 +70,12 @@ class IntentMatch(BaseModel):
     reasoning: str = ""
     signals: list[str] = Field(default_factory=list)
     tool_candidates: list[str] = Field(default_factory=list)
+    # True when the winning intent matched a high-specificity keyword (e.g.
+    # ``pytest``/``截图``/``人设``) that is almost never ambiguous. The
+    # orchestrator uses this to skip the LLM second-opinion (`router.plan`)
+    # and save one model call per turn. Deliberately *not* derived from
+    # ``confidence``: a multi-intent message can score high yet be uncertain.
+    decisive: bool = False
 
 
 class ChatResponse(BaseModel):

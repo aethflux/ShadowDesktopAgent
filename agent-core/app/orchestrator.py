@@ -16,6 +16,7 @@ from app.schemas import (
     AgentTrace,
     ChatRequest,
     ChatResponse,
+    IntentMatch,
     MemoryItem,
     ObservationRequest,
     ObservationResponse,
@@ -182,6 +183,25 @@ class MultiAgentOrchestrator:
             return "running"
         return "completed"
 
+    async def _route(
+        self, message: str, has_attachments: bool
+    ) -> tuple[AgentTrace, IntentMatch]:
+        """Classify intent, consulting the LLM router only when needed.
+
+        Skips the LLM second-opinion (``router.plan``) when the local
+        keyword classifier is *decisive* — i.e. it matched a near-unambiguous
+        keyword — saving one model call per turn. Ambiguous or vague messages
+        (multi-intent, no strong keyword) still get the LLM tiebreaker, which
+        is exactly where it earns its cost.
+        """
+        local_intent = self.router.classify_local(message, has_attachments=has_attachments)
+        if settings.router_skip_plan_when_decisive and local_intent.decisive:
+            model_plan = None
+        else:
+            model_plan = await self.router.plan(message, self.registry.names(), local_intent)
+        trace = self.planner.merge_intents(local_intent, model_plan)
+        return trace, local_intent
+
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
         # Feed user message to the companion strategy for sentiment tracking
         # and future nudge tone decisions.
@@ -196,12 +216,9 @@ class MultiAgentOrchestrator:
             request.attachments,
         )
 
-        local_intent = self.router.classify_local(
-            request.message,
-            has_attachments=bool(request.attachments),
+        trace, _local_intent = await self._route(
+            request.message, has_attachments=bool(request.attachments),
         )
-        model_plan = await self.router.plan(request.message, self.registry.names(), local_intent)
-        trace = self.planner.merge_intents(local_intent, model_plan)
         delegated = trace.delegated_to or "companion-agent"
         reply, tool_calls = await self.agents[delegated].handle(
             message=request.message,
@@ -258,11 +275,9 @@ class MultiAgentOrchestrator:
             request.session_id, request.message, request.attachments,
         )
 
-        local_intent = self.router.classify_local(
+        trace, local_intent = await self._route(
             request.message, has_attachments=bool(request.attachments),
         )
-        model_plan = await self.router.plan(request.message, self.registry.names(), local_intent)
-        trace = self.planner.merge_intents(local_intent, model_plan)
         delegated = trace.delegated_to or "companion-agent"
 
         yield {
