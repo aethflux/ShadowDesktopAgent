@@ -97,6 +97,38 @@ class LLMAgent:
 
     def __init__(self) -> None:
         self.model_client = ModelClient()
+        # Dedicated vision client (purpose="vision" → settings.vision_provider
+        # / vision_model). Having it on the base class lets *any* agent handle
+        # an image gracefully even when its main chat model is text-only — see
+        # the fallback at the top of ``handle``.
+        self.vision_client = ModelClient(purpose="vision")
+
+    def _vision_unavailable_reply(self) -> str:
+        return (
+            "当前视觉模型暂时不可用。请检查 VISION_PROVIDER、VISION_MODEL 和对应 API key。"
+        )
+
+    async def _handle_image_attachments(
+        self,
+        message: str,
+        attachments: list[ChatAttachment],
+        memory_summary: str,
+    ) -> tuple[str, list[ToolCallRecord]]:
+        """Describe/answer about image attachments via the vision client.
+
+        Used when an agent is handed an image but its main chat model can't
+        see — so the image still gets understood instead of erroring out.
+        """
+        if not self.vision_client.supports_vision():
+            return self._vision_unavailable_reply(), []
+
+        messages = self.build_messages(message, attachments, memory_summary)
+        try:
+            response = await self.vision_client.chat(messages, tools=None)
+            reply = self.vision_client.extract_text(response).strip()
+        except Exception as exc:
+            reply = f"图片分析暂时失败：{exc}"
+        return reply or "我看到了图片，但当前视觉模型没有返回有效描述。", []
 
     def get_system_prompt(self) -> str:
         """Build the system prompt for this turn.
@@ -170,6 +202,15 @@ class LLMAgent:
         events are best-effort, and if the callback raises we swallow the
         exception so a buggy listener cannot kill the agent loop.
         """
+        # Image attachments + a text-only chat model: route to the vision
+        # client instead of erroring out. This makes companion/terminal agents
+        # robust to being handed an image — e.g. the local router sent an
+        # image-bearing message here because of a strong tool keyword, even
+        # though the main model can't see. If the chat model *does* support
+        # vision, fall through and let the image ride the normal tool loop.
+        if attachments and not self.model_client.supports_vision():
+            return await self._handle_image_attachments(message, attachments, memory_summary)
+
         messages = self.build_messages(message, attachments, memory_summary)
         tool_calls: list[ToolCallRecord] = []
 

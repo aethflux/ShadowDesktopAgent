@@ -7,7 +7,6 @@ from PIL import Image
 
 from app.agents.llm_agent import LLMAgent, ProgressCallback
 from app.schemas import ChatAttachment, ObservationState, ToolCallRecord
-from app.services.model_client import ModelClient
 from app.services.persona import builder as persona_builder
 from app.tools.registry import ToolRegistry
 
@@ -15,16 +14,14 @@ from app.tools.registry import ToolRegistry
 class DesktopAgent(LLMAgent):
     """Screen-aware companion. Persona body and role guidance now flow
     through :class:`PersonaBuilder`; this class only owns the observation
-    pipeline (screen capture, hashing, structured-JSON observation)."""
+    pipeline (screen capture, hashing, structured-JSON observation).
+
+    The vision client, ``_handle_image_attachments`` and
+    ``_vision_unavailable_reply`` are inherited from :class:`LLMAgent` — the
+    base class now owns image handling so every agent degrades gracefully on
+    image input."""
 
     name = "desktop-agent"
-
-    def __init__(self) -> None:
-        super().__init__()
-        # purpose="vision" lets the client follow ``settings.vision_provider``
-        # and ``settings.vision_model`` dynamically — runtime switches via
-        # /api/settings take effect immediately without rebuilding the agent.
-        self.vision_client = ModelClient(purpose="vision")
 
     def _should_observe_screen(self, message: str) -> bool:
         lowered = message.lower()
@@ -54,28 +51,6 @@ class DesktopAgent(LLMAgent):
         if not left or not right:
             return 64
         return (int(left, 16) ^ int(right, 16)).bit_count()
-
-    def _vision_unavailable_reply(self) -> str:
-        return (
-            "当前视觉模型暂时不可用。请检查 VISION_PROVIDER、VISION_MODEL 和对应 API key。"
-        )
-
-    async def _handle_image_attachments(
-        self,
-        message: str,
-        attachments: list[ChatAttachment],
-        memory_summary: str,
-    ) -> tuple[str, list[ToolCallRecord]]:
-        if not self.vision_client.supports_vision():
-            return self._vision_unavailable_reply(), []
-
-        messages = self.build_messages(message, attachments, memory_summary)
-        try:
-            response = await self.vision_client.chat(messages, tools=None)
-            reply = self.vision_client.extract_text(response).strip()
-        except Exception as exc:
-            reply = f"图片分析暂时失败：{exc}"
-        return reply or "我看到了图片，但当前视觉模型没有返回有效描述。", []
 
     async def observe_screen(
         self,
