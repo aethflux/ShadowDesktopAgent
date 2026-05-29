@@ -17,6 +17,12 @@ persona templates, the default model, or temperature:
     python -m eval.run_persona_eval
     python -m eval.run_persona_eval --min-score 3.5   # gate on average
     python -m eval.run_persona_eval --show-answers     # print replies
+    python -m eval.run_persona_eval --repeats 3        # average 3 samples/probe
+
+Robustness: model and judge calls retry on transient failures and on
+unparseable judge replies, so a flaky JSON response no longer silently drops
+a sample. ``--repeats`` further smooths variance by averaging N samples per
+(persona, probe) at linear token cost.
 
 Exit codes:
     0 — average score meets the floor (or no floor set)
@@ -58,13 +64,40 @@ def _extract_json_object(raw: str) -> dict | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+async def _chat_text_with_retry(
+    client: ModelClient,
+    messages: list[dict],
+    *,
+    retries: int = 2,
+) -> str:
+    """Call the model and return non-empty text, retrying transient failures.
+
+    Network blips and empty completions are the main causes of dropped samples
+    in the benchmark; a couple of backed-off retries make the run far more
+    reproducible without masking a genuinely broken provider.
+    """
+    last_err = "empty reply"
+    for attempt in range(retries + 1):
+        try:
+            response = await client.chat(messages, tools=None)
+            text = client.extract_text(response).strip()
+            if text:
+                return text
+        except Exception as exc:  # noqa: BLE001 — benchmark, surface as retry
+            last_err = str(exc)
+        if attempt < retries:
+            await asyncio.sleep(0.6 * (attempt + 1))
+    raise RuntimeError(f"chat failed after {retries + 1} attempt(s): {last_err}")
+
+
 async def answer_as_persona(client: ModelClient, system_prompt: str, question: str) -> str:
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": question},
-    ]
-    response = await client.chat(messages, tools=None)
-    return client.extract_text(response).strip()
+    return await _chat_text_with_retry(
+        client,
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question},
+        ],
+    )
 
 
 _JUDGE_SYSTEM = (
@@ -82,6 +115,8 @@ async def judge_fidelity(
     persona: PersonaConfig,
     question: str,
     answer: str,
+    *,
+    retries: int = 2,
 ) -> tuple[int | None, str]:
     spec = (
         f"名字：{persona.name}\n"
@@ -98,25 +133,36 @@ async def judge_fidelity(
         f"【被评回答】\n{answer}\n\n"
         "这段回答有多符合上述人设的风格？给出 score 和 reason。"
     )
-    response = await client.chat(
-        [
-            {"role": "system", "content": _JUDGE_SYSTEM},
-            {"role": "user", "content": user_prompt},
-        ],
-        tools=None,
-    )
-    text = client.extract_text(response).strip()
-    parsed = _extract_json_object(text)
-    if not parsed or "score" not in parsed:
-        return None, f"unparseable judge reply: {text[:80]}"
-    try:
-        score = int(parsed["score"])
-    except (TypeError, ValueError):
-        return None, f"non-numeric score: {parsed.get('score')!r}"
-    return max(0, min(5, score)), str(parsed.get("reason", "")).strip()
+    messages = [
+        {"role": "system", "content": _JUDGE_SYSTEM},
+        {"role": "user", "content": user_prompt},
+    ]
+    # Retry on unparseable / non-numeric judge replies — the single most common
+    # cause of dropped samples (e.g. ARIA's n=2). The model usually returns
+    # clean JSON on a second try; only give up after ``retries`` attempts.
+    last_reason = "no judge reply"
+    for attempt in range(retries + 1):
+        try:
+            text = await _chat_text_with_retry(client, messages, retries=0)
+        except Exception as exc:  # noqa: BLE001
+            last_reason = f"judge call failed: {exc}"
+        else:
+            parsed = _extract_json_object(text)
+            if parsed and "score" in parsed:
+                try:
+                    score = int(parsed["score"])
+                except (TypeError, ValueError):
+                    last_reason = f"non-numeric score: {parsed.get('score')!r}"
+                else:
+                    return max(0, min(5, score)), str(parsed.get("reason", "")).strip()
+            else:
+                last_reason = f"unparseable judge reply: {text[:80]}"
+        if attempt < retries:
+            await asyncio.sleep(0.6 * (attempt + 1))
+    return None, last_reason
 
 
-async def run(min_score: float, show_answers: bool) -> int:
+async def run(min_score: float, show_answers: bool, repeats: int = 1) -> int:
     probes = load_probes()
     presets: list[PersonaPreset] = builder.list_presets()
     # Answer with the chat model; judge with the same model for simplicity.
@@ -143,15 +189,18 @@ async def run(min_score: float, show_answers: bool) -> int:
             scores: list[int] = []
             for probe in probes:
                 question = probe["message"]
-                try:
-                    answer = await answer_as_persona(client, system_prompt, question)
-                except Exception as exc:
-                    transcript.append((preset.id, probe["id"], None, f"answer error: {exc}", ""))
-                    continue
-                score, reason = await judge_fidelity(client, preset.config, question, answer)
-                if score is not None:
-                    scores.append(score)
-                transcript.append((preset.id, probe["id"], score, reason, answer))
+                # Repeat each probe ``repeats`` times and keep every score, so
+                # the per-persona average smooths out single-sample variance.
+                for _rep in range(max(1, repeats)):
+                    try:
+                        answer = await answer_as_persona(client, system_prompt, question)
+                    except Exception as exc:
+                        transcript.append((preset.id, probe["id"], None, f"answer error: {exc}", ""))
+                        continue
+                    score, reason = await judge_fidelity(client, preset.config, question, answer)
+                    if score is not None:
+                        scores.append(score)
+                    transcript.append((preset.id, probe["id"], score, reason, answer))
             per_persona[preset.id] = scores
     finally:
         settings.persona_config_json = original
@@ -192,8 +241,11 @@ def main() -> int:
                         help="Optional gate on the overall average (0 = report-only).")
     parser.add_argument("--show-answers", action="store_true",
                         help="Print the generated replies and judge reasons.")
+    parser.add_argument("--repeats", type=int, default=1,
+                        help="Samples per (persona, probe) — higher smooths variance "
+                             "at linear token cost. Default 1.")
     args = parser.parse_args()
-    return asyncio.run(run(args.min_score, args.show_answers))
+    return asyncio.run(run(args.min_score, args.show_answers, args.repeats))
 
 
 if __name__ == "__main__":

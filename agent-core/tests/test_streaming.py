@@ -10,20 +10,14 @@ from fastapi.testclient import TestClient
 from app.orchestrator import _chunk_text
 
 
-def test_chunk_text_basic() -> None:
-    assert _chunk_text("abcdefg", 3) == ["abc", "def", "g"]
-
-
-def test_chunk_text_empty() -> None:
-    assert _chunk_text("", 3) == []
-
-
-def test_chunk_text_smaller_than_size() -> None:
-    assert _chunk_text("hi", 50) == ["hi"]
-
-
-def test_chunk_text_zero_size_returns_whole() -> None:
-    assert _chunk_text("hello", 0) == ["hello"]
+@pytest.mark.parametrize("text,size,expected", [
+    ("abcdefg", 3, ["abc", "def", "g"]),  # basic chunking
+    ("", 3, []),                           # empty input → no chunks
+    ("hi", 50, ["hi"]),                    # shorter than chunk size
+    ("hello", 0, ["hello"]),               # zero size returns whole string
+])
+def test_chunk_text(text, size, expected) -> None:
+    assert _chunk_text(text, size) == expected
 
 
 async def _fake_chat(self, messages, tools=None, tool_choice="auto", temperature=0.2):

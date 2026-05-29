@@ -71,16 +71,15 @@ def test_role_addenda_are_role_scoped(monkeypatch) -> None:
     assert "JSON" in observation  # observation role demands strict JSON output
 
 
-def test_invalid_json_falls_back_to_defaults(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "persona_config_json", "not-json}")
-    rendered = builder.render("companion-agent")
-    assert "Shadow" in rendered  # didn't crash, returned defaults
-
-
-def test_invalid_payload_shape_falls_back_to_defaults(monkeypatch) -> None:
-    """A JSON payload that is *not* an object (e.g. a list) is invalid for a
-    PersonaConfig and must fall back to defaults rather than raising."""
-    monkeypatch.setattr(settings, "persona_config_json", json.dumps(["not", "a", "config"]))
+@pytest.mark.parametrize("bad_value", [
+    "not-json}",                          # malformed JSON
+    json.dumps(["not", "a", "config"]),   # valid JSON but wrong shape (list)
+    json.dumps("a string"),               # valid JSON but not an object
+])
+def test_invalid_persona_config_falls_back_to_defaults(monkeypatch, bad_value) -> None:
+    """Any unusable persona_config_json must degrade to the default persona
+    instead of raising, so a corrupt overlay never breaks chat."""
+    monkeypatch.setattr(settings, "persona_config_json", bad_value)
     rendered = builder.render("companion-agent")
     assert "Shadow" in rendered
 
