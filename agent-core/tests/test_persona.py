@@ -104,18 +104,18 @@ def test_emoji_and_length_choices_drive_instructions(monkeypatch) -> None:
     assert "保持简短" in rendered
 
 
-def test_list_presets_returns_six_archetypes() -> None:
-    """The UI relies on having a stable preset catalogue. If we add or remove
-    presets, this test should be updated intentionally — not silently."""
+def test_list_presets_returns_four_archetypes() -> None:
+    """The preset catalogue is intentionally limited to the archetypes that
+    have a bundled avatar sprite, so persona and on-screen form stay 1:1.
+    Adding a preset should be a deliberate change shipped with matching art —
+    not a silent drift. (管家/御姐 were dropped for lacking dedicated sprites.)"""
     presets = builder.list_presets()
     ids = {p.id for p in presets}
     assert ids == {
         "swordswoman_partner",
         "study_senpai",
         "genki_kouhai",
-        "butler",
         "cyber_ai",
-        "gentle_onee",
     }
 
 
