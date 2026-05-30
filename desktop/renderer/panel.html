@@ -9,17 +9,6 @@
   </head>
   <body>
     <main class="app">
-      <header class="topbar">
-        <div>
-          <h1>Shadow 控制台</h1>
-          <p class="sub">对话、截图、工具调用和运行状态集中在这里。</p>
-        </div>
-        <div class="topbar-actions">
-          <span id="readyDot" class="ready-dot" title="Backend status"></span>
-          <button id="voiceBtn" class="ghost">语音输入</button>
-          <button id="settingsBtn" class="ghost compact" title="设置" aria-label="设置">⚙</button>
-        </div>
-      </header>
 
       <!-- Permission request dialog — surfaced by the broker when the agent
            wants to access a directory outside the workspace. ``hidden`` is
@@ -73,28 +62,61 @@
         </div>
       </div>
 
-      <section class="status-strip" id="capabilities"></section>
-
-      <section class="workspace-grid">
-        <aside class="sessions panel">
-          <div class="section-head">
-            <h2>会话</h2>
-            <button id="newSessionBtn" class="ghost compact" title="新建会话">+</button>
+      <div class="workspace" id="workspace">
+        <!-- LEFT RAIL — 会话 · 常用工具 · 设置 -->
+        <aside class="rail">
+          <div class="rail-brand">
+            <span class="rail-logo" aria-hidden="true">🌙</span>
+            <div class="rail-brand-text">
+              <h1>Shadow</h1>
+              <span class="rail-tagline">
+                <span id="readyDot" class="ready-dot" title="Backend status"></span>
+                控制台
+              </span>
+            </div>
           </div>
-          <div id="sessionList" class="session-list"></div>
+
+          <div class="rail-section rail-sessions">
+            <div class="section-head">
+              <h2>会话</h2>
+              <button id="newSessionBtn" class="ghost compact" title="新建会话">+</button>
+            </div>
+            <div id="sessionList" class="session-list"></div>
+          </div>
+
+          <details class="rail-collapse" id="toolsCollapse">
+            <summary class="rail-collapse-head">
+              <span>运行状态</span>
+              <span class="rail-chevron" aria-hidden="true">▾</span>
+            </summary>
+            <div id="capabilities" class="capabilities"></div>
+          </details>
+
+          <div class="rail-foot">
+            <button id="settingsBtn" class="ghost rail-foot-btn" title="设置">⚙ 设置</button>
+          </div>
         </aside>
 
-        <section class="chat panel">
-          <div class="section-head">
-            <h2 id="chatTitle">对话</h2>
-            <span id="taskStatus" class="status-pill">Idle</span>
-          </div>
+        <!-- CENTER — 对话主体 -->
+        <section class="chat">
+          <header class="chat-head">
+            <div class="chat-head-main">
+              <h2 id="chatTitle">对话</h2>
+              <span id="taskStatus" class="status-pill">Idle</span>
+            </div>
+            <button id="traceToggle" class="ghost compact" title="显示 / 隐藏运行详情" aria-label="显示或隐藏运行详情">◧</button>
+          </header>
+
           <div id="chatLog" class="chat-log"></div>
 
           <form class="composer" id="composer">
-            <textarea id="message" placeholder="输入消息，例如：看看当前屏幕，帮我判断哪里出了问题"></textarea>
+            <div id="attachPreview" class="attach-preview" hidden></div>
+            <textarea id="message" placeholder="输入消息，或直接粘贴 / 拖入图片…"></textarea>
             <div class="composer-row">
-              <input id="imageInput" type="file" accept="image/*" />
+              <div class="composer-tools">
+                <input id="imageInput" type="file" accept="image/*" multiple hidden />
+                <button type="button" id="attachBtn" class="composer-icon" title="添加图片" aria-label="添加图片">📎</button>
+              </div>
               <div class="composer-buttons">
                 <label class="streaming-toggle">
                   <input type="checkbox" id="streamingToggle" checked />
@@ -106,29 +128,40 @@
           </form>
         </section>
 
-        <aside class="sidebar">
-          <section class="panel" id="taskPanel">
+        <!-- RIGHT — agent trace -->
+        <aside class="trace" id="tracePanel">
+          <header class="trace-head">
             <h2>运行详情</h2>
+          </header>
+          <div class="trace-body">
             <div id="taskContent" class="task-content">
               <p class="empty">等待你的第一个任务。</p>
             </div>
-          </section>
 
-          <section class="panel">
-            <h2>工具调用</h2>
-            <div id="timeline" class="timeline-list">
-              <p class="empty">工具调用会显示在这里。</p>
-            </div>
-          </section>
+            <details class="trace-collapse" id="timelineSection">
+              <summary class="trace-collapse-head">
+                <span>工具调用</span>
+                <span class="trace-count" id="timelineCount"></span>
+                <span class="rail-chevron" aria-hidden="true">▾</span>
+              </summary>
+              <div id="timeline" class="timeline-list">
+                <p class="empty">工具调用会显示在这里。</p>
+              </div>
+            </details>
 
-          <section class="panel">
-            <h2>产物</h2>
-            <div id="artifacts" class="artifact-list">
-              <p class="empty">截图和产物会显示在这里。</p>
-            </div>
-          </section>
+            <details class="trace-collapse" id="artifactsSection">
+              <summary class="trace-collapse-head">
+                <span>产物</span>
+                <span class="trace-count" id="artifactsCount"></span>
+                <span class="rail-chevron" aria-hidden="true">▾</span>
+              </summary>
+              <div id="artifacts" class="artifact-list">
+                <p class="empty">截图和产物会显示在这里。</p>
+              </div>
+            </details>
+          </div>
         </aside>
-      </section>
+      </div>
     </main>
     <script src="./panel.js"></script>
   </body>

@@ -6,10 +6,10 @@
 
 | 文件 | 形象 | 对应人设 archetype |
 |------|------|--------------------|
-| `shadow-swordswoman.png` | 见习剑士 | `swordswoman_partner` |
+| `shadow-swordswoman.png` | 见习剑士 | `swordswoman_partner`（默认显示形象） |
 | `shadow-senpai.png` | 学姐 | `study_senpai` |
 | `shadow-cyber.png` | 电子搭档 | `cyber_ai` |
-| `shadow-streamer.png` | 虚拟主播 | `genki_kouhai`（默认显示形象） |
+| `shadow-streamer.png` | 虚拟主播 | `genki_kouhai` |
 
 ## 授权与使用说明 / Licensing notes
 

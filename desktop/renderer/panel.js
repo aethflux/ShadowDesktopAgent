@@ -28,7 +28,8 @@ const capabilitiesEl = document.getElementById("capabilities");
 const composer = document.getElementById("composer");
 const messageInput = document.getElementById("message");
 const imageInput = document.getElementById("imageInput");
-const voiceBtn = document.getElementById("voiceBtn");
+const attachBtn = document.getElementById("attachBtn");
+const attachPreview = document.getElementById("attachPreview");
 const taskContent = document.getElementById("taskContent");
 const taskStatus = document.getElementById("taskStatus");
 const timelineEl = document.getElementById("timeline");
@@ -37,6 +38,12 @@ const sessionListEl = document.getElementById("sessionList");
 const newSessionBtn = document.getElementById("newSessionBtn");
 const streamingToggle = document.getElementById("streamingToggle");
 const readyDot = document.getElementById("readyDot");
+const workspaceEl = document.getElementById("workspace");
+const traceToggle = document.getElementById("traceToggle");
+const timelineSection = document.getElementById("timelineSection");
+const artifactsSection = document.getElementById("artifactsSection");
+const timelineCount = document.getElementById("timelineCount");
+const artifactsCount = document.getElementById("artifactsCount");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsBackdrop = document.getElementById("settingsBackdrop");
 const settingsClose = document.getElementById("settingsClose");
@@ -382,7 +389,14 @@ function recordHistoryForSession(sessionId, role, text, meta = "", options = {})
   const sessionHistory = loadHistory(sessionId);
   const id = options.id || `${sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   if (sessionHistory.some((item) => item.id === id)) return;
-  sessionHistory.push({ id, role, text, meta, ts: options.ts || Date.now(), source: options.source || "" });
+  sessionHistory.push({
+    id, role, text, meta,
+    ts: options.ts || Date.now(),
+    source: options.source || "",
+    // Small downscaled thumbnails (data URLs) so sent images survive a reload
+    // without bloating localStorage with full-resolution payloads.
+    attachments: Array.isArray(options.attachments) ? options.attachments : [],
+  });
   saveHistory(sessionId, sessionHistory);
 
   // Update session preview.
@@ -406,8 +420,8 @@ function recordHistoryForSession(sessionId, role, text, meta = "", options = {})
   }
 }
 
-function recordHistory(role, text, meta = "") {
-  recordHistoryForSession(activeSessionId, role, text, meta);
+function recordHistory(role, text, meta = "", attachments = []) {
+  recordHistoryForSession(activeSessionId, role, text, meta, { attachments });
 }
 
 function importPanelHistoryEntry(entry) {
@@ -455,14 +469,21 @@ function pruneRollingHistories() {
 // Chat rendering
 // ---------------------------------------------------------------------------
 
-function appendMessage(role, text, meta = "", { streaming = false } = {}) {
+function appendMessage(role, text, meta = "", { streaming = false, attachments = [] } = {}) {
   const msg = el("div", { className: `msg ${role}${streaming ? " streaming" : ""}` });
+  if (Array.isArray(attachments) && attachments.length) {
+    const wrap = el("div", { className: "msg-attachments" });
+    for (const url of attachments) {
+      if (url) wrap.appendChild(el("img", { className: "msg-thumb", attrs: { src: url, alt: "图片附件" } }));
+    }
+    if (wrap.children.length) msg.appendChild(wrap);
+  }
   if (role === "assistant") {
     const body = el("div", { className: "msg-body" });
     body.innerHTML = renderMarkdown(text); // Safe: escape + whitelisted tags.
     msg.appendChild(body);
-  } else {
-    msg.textContent = text;
+  } else if (text) {
+    msg.appendChild(el("div", { className: "msg-text", text }));
   }
   if (meta) {
     msg.appendChild(el("span", { className: "meta", text: meta }));
@@ -499,7 +520,7 @@ function finalizeStreamingMessage(node, meta = "") {
 function reloadHistoryView() {
   clearChildren(chatLog);
   for (const item of history) {
-    appendMessage(item.role, item.text, item.meta || "");
+    appendMessage(item.role, item.text, item.meta || "", { attachments: item.attachments || [] });
   }
 }
 
@@ -713,7 +734,7 @@ function renderTask(task, trace = {}, memorySummary = "") {
   taskContent.appendChild(overview);
 
   if (trace.reasoning || trace.delegated_to || trace.active_agent) {
-    const route = el("details", { className: "run-section", attrs: { open: "" } }, [
+    const route = el("details", { className: "run-section" }, [
       el("summary", { text: "路由与决策" }),
       el("div", { className: "run-overview compact" }, [
         makeKv("active_agent", trace.active_agent || task.owner || "unknown"),
@@ -757,6 +778,8 @@ function renderTask(task, trace = {}, memorySummary = "") {
 
 function renderTimeline(toolCalls) {
   clearChildren(timelineEl);
+  if (timelineSection) timelineSection.open = toolCalls.length > 0;
+  if (timelineCount) timelineCount.textContent = toolCalls.length ? String(toolCalls.length) : "";
   if (!toolCalls.length) {
     timelineEl.appendChild(el("p", { className: "empty", text: "工具调用会显示在这里。" }));
     return;
@@ -784,6 +807,8 @@ function renderTimeline(toolCalls) {
 
 function renderArtifacts(artifacts) {
   clearChildren(artifactsEl);
+  if (artifactsSection) artifactsSection.open = artifacts.length > 0;
+  if (artifactsCount) artifactsCount.textContent = artifacts.length ? String(artifacts.length) : "";
   if (!artifacts.length) {
     artifactsEl.appendChild(el("p", { className: "empty", text: "截图和产物会显示在这里。" }));
     return;
@@ -809,33 +834,35 @@ function renderArtifacts(artifacts) {
 
 function renderCapabilities(capabilities) {
   clearChildren(capabilitiesEl);
-
-  const runtime = el("div", { className: "status-group" }, [
-    el("span", { className: "status-label", text: "Runtime" }),
-    el("span", { className: "chip", text: capabilities.provider || "" }),
-    el("span", { className: "chip", text: capabilities.model || "" }),
-    el("span", { className: "chip", text: `vision:${capabilities.vision_provider || "?"}` }),
-    el("span", { className: "chip", text: `embed:${capabilities.embedding_provider || "?"}` }),
-  ]);
-
   const features = capabilities.features || {};
-  const featureRow = el("div", { className: "status-group" }, [
-    el("span", { className: "status-label", text: "Features" }),
-    el("span", { className: "chip", text: `vision:${features.vision ? "on" : "off"}` }),
-    el("span", { className: "chip", text: `tts:${features.tts_engine || "browser-speech"}` }),
-    el("span", { className: "chip", text: `memory:${features.semantic_memory ? "on" : "off"}` }),
-  ]);
 
-  const tools = el("div", { className: "status-group" }, [
-    el("span", { className: "status-label", text: "Tools" }),
-    ...(capabilities.tools || []).slice(0, 8).map((name) =>
-      el("span", { className: "chip", text: String(name) })
-    ),
-  ]);
+  const group = (label, chips) =>
+    el("div", { className: "cap-group" }, [
+      el("span", { className: "cap-label", text: label }),
+      el(
+        "div",
+        { className: "cap-chips" },
+        chips.filter(Boolean).map((value) => el("span", { className: "chip", text: String(value) })),
+      ),
+    ]);
 
-  capabilitiesEl.appendChild(runtime);
-  capabilitiesEl.appendChild(featureRow);
-  capabilitiesEl.appendChild(tools);
+  const tools = (capabilities.tools || []).map(String);
+  capabilitiesEl.appendChild(group("工具", tools.length ? tools : ["（暂无）"]));
+  capabilitiesEl.appendChild(el("div", { className: "cap-divider" }));
+  capabilitiesEl.appendChild(group("模型", [capabilities.provider, capabilities.model]));
+  capabilitiesEl.appendChild(
+    group("视觉 / 记忆", [
+      `vision:${capabilities.vision_provider || "?"}`,
+      `embed:${capabilities.embedding_provider || "?"}`,
+    ]),
+  );
+  capabilitiesEl.appendChild(
+    group("能力", [
+      `vision:${features.vision ? "on" : "off"}`,
+      `tts:${features.tts_engine || "browser-speech"}`,
+      `memory:${features.semantic_memory ? "on" : "off"}`,
+    ]),
+  );
 }
 
 async function refreshReady() {
@@ -996,28 +1023,141 @@ if (permissionAlways) permissionAlways.addEventListener("click", () => postPermi
 // Composer submit — streaming or one-shot depending on toggle
 // ---------------------------------------------------------------------------
 
+// ---- Composer attachments (image pick / paste / drop) ------------------- //
+//
+// One unified input: typed text, attached images, and voice all funnel through
+// the same composer. Images can arrive via the 📎 picker, clipboard paste, or
+// drag-drop; each shows as a removable preview chip before sending and inline
+// in the user's bubble afterwards.
+let pendingAttachments = []; // [{ kind, mime_type, data_url, thumb_url }]
+
+// Downscale a data URL to a small thumbnail — used for the in-bubble image and
+// for history persistence (full-res images would exhaust localStorage fast).
+function downscaleImage(dataUrl, maxDim = 240) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      } catch {
+        resolve(dataUrl); // fall back to the original if canvas export fails
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+function renderAttachPreview() {
+  clearChildren(attachPreview);
+  if (!pendingAttachments.length) {
+    attachPreview.hidden = true;
+    return;
+  }
+  attachPreview.hidden = false;
+  pendingAttachments.forEach((att, index) => {
+    const chip = el("div", { className: "attach-chip" }, [
+      el("img", { attrs: { src: att.thumb_url, alt: "待发送图片" } }),
+    ]);
+    const remove = el("button", {
+      className: "attach-remove",
+      attrs: { type: "button", title: "移除", "aria-label": "移除图片" },
+      text: "✕",
+    });
+    remove.addEventListener("click", () => {
+      pendingAttachments.splice(index, 1);
+      renderAttachPreview();
+    });
+    chip.appendChild(remove);
+    attachPreview.appendChild(chip);
+  });
+}
+
+function clearAttachments() {
+  pendingAttachments = [];
+  renderAttachPreview();
+}
+
+async function addImageFiles(files) {
+  const list = Array.from(files || []).filter((f) => f && f.type.startsWith("image/"));
+  for (const file of list) {
+    if (pendingAttachments.length >= 6) break; // sane cap per turn
+    const dataUrl = await fileToDataUrl(file);
+    const thumb = await downscaleImage(dataUrl);
+    pendingAttachments.push({ kind: "image", mime_type: file.type, data_url: dataUrl, thumb_url: thumb });
+  }
+  renderAttachPreview();
+}
+
+attachBtn?.addEventListener("click", () => imageInput.click());
+imageInput.addEventListener("change", () => {
+  addImageFiles(imageInput.files);
+  imageInput.value = ""; // let the same file be picked again later
+});
+
+// Paste an image directly into the message box.
+messageInput.addEventListener("paste", (event) => {
+  const items = event.clipboardData?.items;
+  if (!items) return;
+  const files = [];
+  for (const item of items) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      if (file) files.push(file);
+    }
+  }
+  if (files.length) {
+    event.preventDefault();
+    addImageFiles(files);
+  }
+});
+
+// Drag-and-drop an image onto the composer.
+composer.addEventListener("dragover", (event) => {
+  if (event.dataTransfer?.types?.includes("Files")) {
+    event.preventDefault();
+    composer.classList.add("drag-over");
+  }
+});
+composer.addEventListener("dragleave", (event) => {
+  if (event.target === composer) composer.classList.remove("drag-over");
+});
+composer.addEventListener("drop", (event) => {
+  composer.classList.remove("drag-over");
+  const files = event.dataTransfer?.files;
+  if (files && files.length) {
+    event.preventDefault();
+    addImageFiles(files);
+  }
+});
+
 composer.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = messageInput.value.trim();
-  if (!text) return;
+  // Allow an image-only turn, but require at least text or an attachment.
+  if (!text && !pendingAttachments.length) return;
 
-  appendMessage("user", text);
-  recordHistory("user", text);
+  const sent = pendingAttachments.slice();
+  const thumbs = sent.map((a) => a.thumb_url);
+
+  appendMessage("user", text, "", { attachments: thumbs });
+  recordHistory("user", text, "", thumbs);
+  clearAttachments();
   setTaskStatus("running");
-  voiceBtn.disabled = true;
   composer.querySelector("button[type='submit']").disabled = true;
 
-  const attachments = [];
-  const file = imageInput.files?.[0];
-  if (file) {
-    attachments.push({
-      kind: "image",
-      mime_type: file.type,
-      data_url: await fileToDataUrl(file),
-    });
-  }
-
-  const payload = { message: text, session_id: activeSessionId, attachments };
+  const payload = {
+    message: text,
+    session_id: activeSessionId,
+    attachments: sent.map((a) => ({ kind: "image", mime_type: a.mime_type, data_url: a.data_url })),
+  };
 
   try {
     if (streamingToggle.checked) {
@@ -1026,14 +1166,12 @@ composer.addEventListener("submit", async (event) => {
       await runOneShot(payload);
     }
     messageInput.value = "";
-    imageInput.value = "";
   } catch (error) {
     setTaskStatus("failed");
     const reason = error && error.message ? error.message : String(error);
     appendMessage("assistant", `请求失败：${reason}`);
     recordHistory("assistant", `请求失败：${reason}`);
   } finally {
-    voiceBtn.disabled = false;
     composer.querySelector("button[type='submit']").disabled = false;
     taskStatus.classList.remove("streaming");
   }
@@ -1191,6 +1329,10 @@ async function runStreaming(payload) {
 function renderLiveTimeline(stepsMap, plan) {
   clearChildren(timelineEl);
 
+  const hasLiveContent = (plan && Array.isArray(plan.plan) && plan.plan.length) || (stepsMap && stepsMap.size);
+  if (timelineSection && hasLiveContent) timelineSection.open = true;
+  if (timelineCount) timelineCount.textContent = stepsMap && stepsMap.size ? String(stepsMap.size) : "";
+
   if (plan && Array.isArray(plan.plan) && plan.plan.length) {
     const checklist = el("div", { className: "live-plan" });
     if (plan.summary) {
@@ -1267,55 +1409,6 @@ function renderLiveTimeline(stepsMap, plan) {
 }
 
 // ---------------------------------------------------------------------------
-// Voice recognition — single instance, click again to stop
-// ---------------------------------------------------------------------------
-
-let activeRecognition = null;
-
-function stopRecognition() {
-  if (activeRecognition) {
-    try { activeRecognition.stop(); } catch { /* ignore */ }
-    activeRecognition = null;
-    voiceBtn.textContent = "语音输入";
-    voiceBtn.classList.remove("recording");
-  }
-}
-
-voiceBtn.addEventListener("click", () => {
-  if (activeRecognition) {
-    stopRecognition();
-    return;
-  }
-  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!Recognition) {
-    appendMessage("assistant", "当前环境不支持 Web Speech API，可继续使用文本输入。");
-    return;
-  }
-  const recognition = new Recognition();
-  recognition.lang = "zh-CN";
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.onresult = (event) => {
-    const transcript = event.results[0][0].transcript;
-    messageInput.value = transcript;
-    appendMessage("assistant", `已转写语音：${transcript}`);
-  };
-  recognition.onend = () => stopRecognition();
-  recognition.onerror = (event) => {
-    appendMessage("assistant", `语音输入错误：${event.error || "unknown"}`);
-    stopRecognition();
-  };
-  try {
-    recognition.start();
-    activeRecognition = recognition;
-    voiceBtn.textContent = "停止录音";
-    voiceBtn.classList.add("recording");
-  } catch (error) {
-    appendMessage("assistant", `语音输入启动失败：${error.message}`);
-  }
-});
-
-// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 
@@ -1333,6 +1426,27 @@ loadCapabilities().catch((error) => {
 });
 refreshReady();
 setInterval(refreshReady, 30_000);
+
+// Trace panel show/hide — lets the user reclaim width for the conversation.
+// The choice is persisted so it survives reopening the console.
+const TRACE_COLLAPSED_KEY = "shadow.tracePanelCollapsed";
+
+function applyTracePref() {
+  const collapsed = localStorage.getItem(TRACE_COLLAPSED_KEY) === "1";
+  workspaceEl?.classList.toggle("trace-collapsed", collapsed);
+  if (traceToggle) {
+    traceToggle.textContent = collapsed ? "◨" : "◧";
+    traceToggle.classList.toggle("active", !collapsed);
+  }
+}
+
+traceToggle?.addEventListener("click", () => {
+  const collapsed = !workspaceEl.classList.contains("trace-collapsed");
+  localStorage.setItem(TRACE_COLLAPSED_KEY, collapsed ? "1" : "0");
+  applyTracePref();
+});
+
+applyTracePref();
 
 // ===========================================================================
 // Settings modal
@@ -1353,16 +1467,22 @@ const PET_AVATAR_OPTIONS = [
   { value: "cyber", label: "电子搭档" },
   { value: "senpai", label: "学姐" },
 ];
-// Persona archetype → pet avatar sprite. Applied when the user clicks a
-// persona preset so the on-screen character matches the chosen personality.
-// Archetypes without a dedicated sprite (butler / gentle_onee) are omitted —
-// we leave the current avatar untouched rather than forcing a visual mismatch.
+// Persona archetype ↔ pet avatar sprite. The catalogue is curated so every
+// persona has exactly one sprite and vice-versa, which lets us bind the two
+// directions: picking a personality sets the on-screen form, and picking a
+// form (桌宠 tab / right-click menu) applies the matching personality.
 const ARCHETYPE_TO_AVATAR = {
   swordswoman_partner: "swordswoman",
   study_senpai: "senpai",
   cyber_ai: "cyber",
   genki_kouhai: "streamer",
 };
+const AVATAR_TO_ARCHETYPE = Object.fromEntries(
+  Object.entries(ARCHETYPE_TO_AVATAR).map(([archetype, avatar]) => [avatar, archetype]),
+);
+function avatarSpriteUrl(avatarId) {
+  return `./assets/avatars/shadow-${avatarId}.png`;
+}
 const PET_VOICE_OPTIONS = [
   { value: "warm-girl", label: "清亮女声" },
   { value: "sweet-lady", label: "甜美女声" },
@@ -1771,7 +1891,22 @@ function renderPetTab() {
   const voiceEnabled = !!effectiveValue("voiceEnabled");
   const groups = el("div", { className: "settings-section" }, [
     el("h3", { text: "桌宠外观" }),
-    selectField("形象", "切换“性格”预设时会自动匹配形象；这里可手动覆盖，也能在桌宠右键菜单快速切换。", "avatar", PET_AVATAR_OPTIONS),
+    selectField(
+      "形象（与性格绑定）",
+      "形象和性格是同一个身份：切换形象会自动套用对应人设，想细调性格请到“性格”页。也可在桌宠右键菜单快速切换。",
+      "avatar",
+      PET_AVATAR_OPTIONS,
+      {
+        onChange: (value) => {
+          const archetype = AVATAR_TO_ARCHETYPE[value];
+          const preset = personaPresets?.presets?.find((p) => p.id === archetype);
+          if (preset) {
+            commitPersonaConfig(() => ({ ...preset.config }));
+            setSettingsStatus(`已切换形象并同步人设：${preset.label}（保存后生效）`, "dirty");
+          }
+        },
+      },
+    ),
     selectField("桌宠音色", "控制桌宠气泡回复使用的 TTS 音色。", "petVoice", PET_VOICE_OPTIONS),
     el("div", { className: "settings-divider" }),
     el("h3", { text: "桌面说话行为" }),
@@ -2108,6 +2243,18 @@ function renderPersonaPresetRow() {
   const currentArchetype = effectivePersonaConfig().archetype;
   for (const preset of personaPresets.presets) {
     const isActive = preset.id === currentArchetype;
+    // Each preset carries its bound avatar so the card shows the actual face,
+    // making the persona↔form link visible at a glance. Drop the thumbnail if
+    // the sprite ever fails to load rather than showing a broken image.
+    const avatarId = ARCHETYPE_TO_AVATAR[preset.id];
+    let avatarImg = null;
+    if (avatarId) {
+      avatarImg = el("img", {
+        className: "persona-preset-avatar",
+        attrs: { src: avatarSpriteUrl(avatarId), alt: preset.label, loading: "lazy" },
+      });
+      avatarImg.addEventListener("error", () => avatarImg.remove());
+    }
     const card = el(
       "button",
       {
@@ -2115,8 +2262,11 @@ function renderPersonaPresetRow() {
         attrs: { type: "button", title: preset.description || preset.label },
       },
       [
-        el("strong", { text: preset.label }),
-        el("span", { className: "persona-preset-desc", text: preset.description || "" }),
+        avatarImg,
+        el("div", { className: "persona-preset-text" }, [
+          el("strong", { text: preset.label }),
+          el("span", { className: "persona-preset-desc", text: preset.description || "" }),
+        ]),
       ],
     );
     card.addEventListener("click", () => {

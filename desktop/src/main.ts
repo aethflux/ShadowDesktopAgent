@@ -41,7 +41,9 @@ type ProviderListing = {
 };
 
 const DEFAULT_PREFS: DesktopPrefs = {
-  avatar: "streamer",
+  // Must match the default persona (swordswoman_partner / 见习剑士) so the
+  // on-screen form and personality agree out of the box.
+  avatar: "swordswoman",
   petVoice: "warm-girl",
   voiceEnabled: true,
   observeSpeechEnabled: true
