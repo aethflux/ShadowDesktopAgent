@@ -4,7 +4,13 @@ const sendBtn = document.getElementById("sendBtn");
 
 const SCENE_STYLES = new Set(["sakura", "rainy", "neon"]);
 
-function applySceneStyle(value) {
+function applySceneStyle(value, customUrl) {
+  if (value === "custom" && customUrl) {
+    document.body.dataset.scene = "custom";
+    document.body.style.setProperty("--scene-bg", `url("${customUrl}")`);
+    return;
+  }
+  document.body.style.removeProperty("--scene-bg");
   document.body.dataset.scene = SCENE_STYLES.has(value) ? value : "sakura";
 }
 
@@ -39,8 +45,8 @@ window.shadow.onPetChatBusyChanged?.((busy) => {
 window.addEventListener("DOMContentLoaded", () => {
   applySceneStyle("sakura");
   window.shadow.desktopPrefs?.()
-    .then((prefs) => applySceneStyle(prefs?.sceneStyle))
+    .then((prefs) => applySceneStyle(prefs?.sceneStyle, prefs?.customSceneUrl))
     .catch((error) => console.warn("desktop prefs load failed:", error));
-  window.shadow.onDesktopPrefsChanged?.((prefs) => applySceneStyle(prefs?.sceneStyle));
+  window.shadow.onDesktopPrefsChanged?.((prefs) => applySceneStyle(prefs?.sceneStyle, prefs?.customSceneUrl));
   input.focus();
 });

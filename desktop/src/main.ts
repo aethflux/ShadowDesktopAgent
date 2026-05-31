@@ -11,6 +11,10 @@ type DragState = { startMouse: Point; startWindow: Point };
 type DesktopPrefs = {
   avatar: string;
   sceneStyle: string;
+  // Absolute URLs of an AI-generated scene / avatar; used when avatar or
+  // sceneStyle is "custom". Empty string = none.
+  customSceneUrl: string;
+  customAvatarUrl: string;
   petVoice: string;
   voiceEnabled: boolean;
   observeSpeechEnabled: boolean;
@@ -46,6 +50,8 @@ const DEFAULT_PREFS: DesktopPrefs = {
   // on-screen form and personality agree out of the box.
   avatar: "swordswoman",
   sceneStyle: "sakura",
+  customSceneUrl: "",
+  customAvatarUrl: "",
   petVoice: "warm-girl",
   voiceEnabled: true,
   observeSpeechEnabled: true

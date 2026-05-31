@@ -37,6 +37,8 @@ let selectedVoice = "warm-girl";
 let desktopPrefs = {
   avatar: selectedAvatar,
   sceneStyle: "sakura",
+  customSceneUrl: "",
+  customAvatarUrl: "",
   petVoice: selectedVoice,
   voiceEnabled: true,
   observeSpeechEnabled: true,
@@ -46,8 +48,14 @@ let suppressObserveUntil = 0;
 let observeRunVersion = 0;
 
 function applyAvatar(value) {
-  selectedAvatar = AVATAR_OPTIONS.includes(value) ? value : "streamer";
-  petShell?.classList.remove(...AVATAR_CLASSES);
+  // "custom" = an AI-generated portrait whose absolute URL is in prefs.
+  const custom = value === "custom" && desktopPrefs.customAvatarUrl;
+  selectedAvatar = custom
+    ? "custom"
+    : AVATAR_OPTIONS.includes(value)
+      ? value
+      : "streamer";
+  petShell?.classList.remove(...AVATAR_CLASSES, "avatar-custom");
   petShell?.classList.add(`avatar-${selectedAvatar}`);
   if (avatarImage) {
     // Guard against a missing/renamed sprite leaving a broken-image icon on
@@ -63,7 +71,7 @@ function applyAvatar(value) {
       avatarImage.src = AVATAR_ASSETS.streamer;
     };
     avatarImage.style.visibility = "";
-    avatarImage.src = AVATAR_ASSETS[selectedAvatar];
+    avatarImage.src = custom ? desktopPrefs.customAvatarUrl : AVATAR_ASSETS[selectedAvatar];
     avatarImage.alt = `${selectedAvatar} avatar`;
   }
 }
@@ -73,6 +81,13 @@ function applyVoice(value) {
 }
 
 function applySceneStyle(value) {
+  if (value === "custom" && desktopPrefs.customSceneUrl) {
+    document.body.dataset.scene = "custom";
+    if (petShell) petShell.dataset.scene = "custom";
+    document.body.style.setProperty("--scene-bg", `url("${desktopPrefs.customSceneUrl}")`);
+    return;
+  }
+  document.body.style.removeProperty("--scene-bg");
   const sceneStyle = SCENE_STYLE_OPTIONS.includes(value) ? value : "sakura";
   document.body.dataset.scene = sceneStyle;
   if (petShell) petShell.dataset.scene = sceneStyle;

@@ -9,6 +9,10 @@ type AgentSettings = Record<string, unknown>;
 type DesktopPrefs = {
   avatar: string;
   sceneStyle: string;
+  // Absolute URLs of an AI-generated scene / avatar; used when avatar or
+  // sceneStyle is "custom". Empty string = none.
+  customSceneUrl: string;
+  customAvatarUrl: string;
   petVoice: string;
   voiceEnabled: boolean;
   observeSpeechEnabled: boolean;

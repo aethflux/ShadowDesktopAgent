@@ -1479,7 +1479,7 @@ let pendingPatch = {};           // unsaved field deltas
 let pendingDesktopPatch = {};    // unsaved desktop preference deltas
 let activeTab = "general";
 
-const DESKTOP_PREF_KEYS = new Set(["avatar", "sceneStyle", "petVoice", "voiceEnabled", "observeSpeechEnabled"]);
+const DESKTOP_PREF_KEYS = new Set(["avatar", "sceneStyle", "customSceneUrl", "customAvatarUrl", "petVoice", "voiceEnabled", "observeSpeechEnabled"]);
 const PET_AVATAR_OPTIONS = [
   { value: "streamer", label: "虚拟主播" },
   { value: "swordswoman", label: "见习剑士" },
@@ -1532,6 +1532,13 @@ function normalizeSceneStyle(value) {
 }
 
 function applySceneStyle(value) {
+  const customUrl = desktopPrefsState?.customSceneUrl;
+  if (value === "custom" && customUrl) {
+    document.body.dataset.scene = "custom";
+    document.body.style.setProperty("--scene-bg", `url("${customUrl}")`);
+    return;
+  }
+  document.body.style.removeProperty("--scene-bg");
   document.body.dataset.scene = normalizeSceneStyle(value);
 }
 
@@ -1798,6 +1805,7 @@ function renderSettingsBody() {
   else if (activeTab === "pet") renderPetTab();
   else if (activeTab === "persona") renderPersonaTab();
   else if (activeTab === "voice") renderVoiceTab();
+  else if (activeTab === "image") renderImageTab();
   else if (activeTab === "memory") renderMemoryTab();
   else if (activeTab === "permissions") renderPermissionsTab();
   else renderAboutTab();
@@ -2024,6 +2032,186 @@ function renderVoiceTab() {
     textField("音调调整 (Hz)", "例如 +0Hz / +50Hz / -30Hz。", "edge_tts_pitch"),
   ]);
   settingsBody.appendChild(groups);
+}
+
+// ---- AI image generation tab -------------------------------------------- //
+
+let imageGenBusy = false;
+
+function renderImageTab() {
+  const enabled = !!effectiveValue("enable_image_generation");
+  const groups = el("div", { className: "settings-section" }, [
+    el("h3", { text: "AI 生成（文生图）" }),
+    el("p", {
+      className: "field-hint",
+      text: "用 ModelScope 文生图模型生成控制台场景或桌宠立绘，生成后在下方图库一键应用。改了模型 ID 记得先点保存。",
+    }),
+    toggleField(
+      "启用生图",
+      "关闭后隐藏生成入口，agent 也无法调用 image.generate 工具。",
+      "enable_image_generation",
+      { onChange: () => renderSettingsBody() },
+    ),
+    textField(
+      "生图模型 ID",
+      "ModelScope 文生图模型，例如 MusePublic/489_ckpt_FLUX_1。需你的 ModelScope key 有访问权限。",
+      "image_model",
+    ),
+  ]);
+
+  if (enabled) {
+    groups.appendChild(el("div", { className: "settings-divider" }));
+    groups.appendChild(renderImageGenerator());
+    groups.appendChild(el("div", { className: "settings-divider" }));
+    groups.appendChild(el("h3", { text: "图库" }));
+    groups.appendChild(el("div", { className: "image-gallery", attrs: { id: "imageGallery" } }, [
+      el("p", { className: "empty-inline", text: "加载中…" }),
+    ]));
+  }
+  settingsBody.appendChild(groups);
+  if (enabled) loadImageGallery();
+}
+
+function renderImageGenerator() {
+  const wrap = el("div", { className: "image-gen-card" });
+
+  const prompt = document.createElement("textarea");
+  prompt.className = "image-gen-prompt";
+  prompt.rows = 3;
+  prompt.placeholder = "描述画面，例如：温暖的樱花书房，柔和光线，二次元背景插画，无人物";
+
+  let purpose = "scene";
+  const purposeRow = el("div", { className: "persona-radio-group" });
+  const radioRefs = [];
+  for (const opt of [
+    { value: "scene", label: "场景" },
+    { value: "avatar", label: "立绘" },
+    { value: "other", label: "其他" },
+  ]) {
+    const label = el("label", {
+      className: "persona-radio" + (opt.value === purpose ? " selected" : ""),
+    }, [el("span", { text: opt.label })]);
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "image-purpose";
+    radio.value = opt.value;
+    radio.checked = opt.value === purpose;
+    radio.addEventListener("change", () => {
+      purpose = opt.value;
+      radioRefs.forEach((ref) => ref.label.classList.toggle("selected", ref.value === purpose));
+    });
+    label.insertBefore(radio, label.firstChild);
+    radioRefs.push({ value: opt.value, label });
+    purposeRow.appendChild(label);
+  }
+
+  const status = el("span", { className: "image-gen-status", attrs: { id: "imageGenStatus" } });
+  const button = el("button", { className: "image-gen-btn", text: "生成", attrs: { type: "button" } });
+  button.addEventListener("click", () => generateImage(prompt.value, purpose, button, status));
+
+  wrap.appendChild(el("span", { className: "field-label", text: "提示词" }));
+  wrap.appendChild(prompt);
+  wrap.appendChild(el("div", { className: "image-gen-controls" }, [purposeRow, button]));
+  wrap.appendChild(status);
+  wrap.appendChild(el("div", { className: "image-gen-preview", attrs: { id: "imageGenPreview" } }));
+  return wrap;
+}
+
+async function generateImage(promptText, purpose, button, status) {
+  const text = (promptText || "").trim();
+  if (!text) {
+    status.textContent = "请先输入提示词。";
+    status.className = "image-gen-status error";
+    return;
+  }
+  if (imageGenBusy) return;
+  imageGenBusy = true;
+  button.disabled = true;
+  status.textContent = "正在生成（可能要几十秒）…";
+  status.className = "image-gen-status";
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/image/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: text, purpose }),
+    });
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+    }
+    const record = await resp.json();
+    status.textContent = "已生成，可在下方图库应用。";
+    status.className = "image-gen-status ok";
+    const preview = document.getElementById("imageGenPreview");
+    if (preview) {
+      clearChildren(preview);
+      preview.appendChild(el("img", { attrs: { src: `${BACKEND_URL}${record.url}`, alt: record.prompt } }));
+    }
+    loadImageGallery();
+  } catch (error) {
+    status.textContent = `生成失败：${error.message || error}`;
+    status.className = "image-gen-status error";
+  } finally {
+    imageGenBusy = false;
+    button.disabled = false;
+  }
+}
+
+async function loadImageGallery() {
+  const container = document.getElementById("imageGallery");
+  if (!container) return;
+  let records = [];
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/image/gallery`);
+    if (resp.ok) records = await resp.json();
+  } catch {
+    /* backend offline — show empty state */
+  }
+  clearChildren(container);
+  if (!records.length) {
+    container.appendChild(el("p", { className: "empty-inline", text: "还没有生成过图片。" }));
+    return;
+  }
+  for (const record of records) {
+    const abs = `${BACKEND_URL}${record.url}`;
+    const card = el("div", { className: "image-card" }, [
+      el("img", { className: "image-card-thumb", attrs: { src: abs, alt: record.prompt, loading: "lazy" } }),
+      el("p", { className: "image-card-prompt", text: record.prompt }),
+    ]);
+    const sceneBtn = el("button", { className: "ghost compact", text: "用作场景", attrs: { type: "button" } });
+    sceneBtn.addEventListener("click", () => applyGenerated("scene", abs));
+    const avatarBtn = el("button", { className: "ghost compact", text: "用作立绘", attrs: { type: "button" } });
+    avatarBtn.addEventListener("click", () => applyGenerated("avatar", abs));
+    const delBtn = el("button", { className: "ghost compact image-card-del", text: "删除", attrs: { type: "button" } });
+    delBtn.addEventListener("click", () => deleteGenerated(record.id));
+    card.appendChild(el("div", { className: "image-card-actions" }, [sceneBtn, avatarBtn, delBtn]));
+    container.appendChild(card);
+  }
+}
+
+async function applyGenerated(kind, absUrl) {
+  try {
+    if (kind === "scene") {
+      desktopPrefsState = { ...(desktopPrefsState || {}), sceneStyle: "custom", customSceneUrl: absUrl };
+      await window.shadow.updateDesktopPrefs({ sceneStyle: "custom", customSceneUrl: absUrl });
+      applySceneStyle("custom");
+      setSettingsStatus("已应用为当前场景。", "ok");
+    } else {
+      desktopPrefsState = { ...(desktopPrefsState || {}), avatar: "custom", customAvatarUrl: absUrl };
+      await window.shadow.updateDesktopPrefs({ avatar: "custom", customAvatarUrl: absUrl });
+      setSettingsStatus("已应用为桌宠立绘。", "ok");
+    }
+  } catch (error) {
+    setSettingsStatus(`应用失败：${error.message || error}`, "error");
+  }
+}
+
+async function deleteGenerated(id) {
+  try {
+    await fetch(`${BACKEND_URL}/api/image/${id}`, { method: "DELETE" });
+  } catch {
+    /* ignore and refresh */
+  }
+  loadImageGallery();
 }
 
 function renderMemoryTab() {
