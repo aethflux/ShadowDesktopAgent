@@ -90,38 +90,12 @@ class Settings(BaseSettings):
     edge_tts_rate: str = "+0%"
     edge_tts_pitch: str = "+0Hz"
 
-    # ---- Optional MiniMax TTS / ASR ----
-    # Browser Web Speech remains the fallback. Enable this only when the current
-    # MiniMax token-plan key has speech quota.
+    # ---- MiniMax ASR (optional, dormant) ----
+    # Speech-to-text only. TTS is Edge-only; enable this just to expose the
+    # /api/voice/asr endpoint when the MiniMax key has speech quota.
     enable_minimax_voice: bool = False
     minimax_voice_api_base: str = "https://api.minimax.chat/v1"
-    minimax_tts_voice_id: str = "Chinese (Mandarin)_Warm_Girl"
-    minimax_tts_model: str = "speech-2.8-hd"
-    minimax_tts_speed: float = 1.0
-    minimax_tts_pitch: float = 0.0
-    minimax_tts_volume: float = 1.0
     minimax_asr_model: str = "whisper-1"  # whisper-1 or MiniMax's model
-
-    # ---- Optional ModelScope TTS ----
-    # Keep disabled by default: the public CosyVoice2 Studio can return silent
-    # audio for API calls without a valid prompt voice sample.
-    enable_modelscope_tts: bool = False
-    modelscope_tts_api_base: str = "https://iic-cosyvoice2-0-5b.ms.show"
-    modelscope_tts_model: str = "iic/CosyVoice2-0.5B"
-    modelscope_tts_mode: str = "自然语言控制"
-    modelscope_tts_instruction: str = "用温柔自然的中文女声朗读"
-    modelscope_tts_seed: int = 0
-
-    # ---- Optional Gemini TTS ----
-    # Gemini 3.1 Flash TTS — enabled separately via ENABLE_GEMINI_TTS.
-    # Uses the OpenAI-compatible `/v1/audio/speech` endpoint.
-    enable_gemini_tts: bool = False
-    gemini_tts_api_key: str | None = None
-    gemini_tts_api_base: str = "https://generativelanguage.googleapis.com"
-    gemini_tts_model: str = "google/gemini-3.1-flash-tts-preview"
-    gemini_tts_voice: str = "Kore"
-    gemini_tts_speed: float = 1.0
-    gemini_tts_output_format: str = "mp3"
 
     # ---- UI / paths ----
     desktop_origin: str = "http://localhost:5173"

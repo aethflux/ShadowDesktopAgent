@@ -113,7 +113,7 @@ ENABLE_SEMANTIC_MEMORY=false
 
 ## 语音
 
-默认使用 Edge Neural TTS，失败时回退到浏览器语音：
+桌宠朗读（TTS）只用 Edge Neural TTS，失败时回退到浏览器本地语音合成：
 
 ```env
 ENABLE_EDGE_TTS=true
@@ -122,7 +122,7 @@ EDGE_TTS_RATE=+0%
 EDGE_TTS_PITCH=+0Hz
 ```
 
-ModelScope / MiniMax / Gemini TTS 是可选分支，没有对应额度时保持关闭。
+语音输入（ASR）是可选的 MiniMax 接口，默认关闭（`ENABLE_MINIMAX_VOICE`）。
 
 ## 本地验证
 

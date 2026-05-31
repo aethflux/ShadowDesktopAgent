@@ -100,7 +100,7 @@ class VoiceTTSRequest(BaseModel):
 
 class VoiceTTSResponse(BaseModel):
     text: str
-    engine: Literal["browser-speech", "edge", "modelscope", "minimax", "gemini"] = "browser-speech"
+    engine: Literal["browser-speech", "edge"] = "browser-speech"
     voice: str | None = None
     rate: float = 1.0
     pitch: float = 1.05
@@ -264,13 +264,7 @@ class SettingsView(BaseModel):
     edge_tts_voice: str
     edge_tts_rate: str
     edge_tts_pitch: str
-    enable_minimax_voice: bool
-    minimax_tts_voice_id: str
-    minimax_tts_speed: float
-    minimax_tts_pitch: float
-    enable_modelscope_tts: bool
-    enable_gemini_tts: bool
-    gemini_tts_voice: str
+    enable_minimax_voice: bool  # gates the optional ASR endpoint only
     # Behavior
     rate_limit_capacity: int
     rate_limit_refill_per_second: float
@@ -311,12 +305,6 @@ class SettingsPatch(BaseModel):
     edge_tts_rate: str | None = None
     edge_tts_pitch: str | None = None
     enable_minimax_voice: bool | None = None
-    minimax_tts_voice_id: str | None = None
-    minimax_tts_speed: float | None = None
-    minimax_tts_pitch: float | None = None
-    enable_modelscope_tts: bool | None = None
-    enable_gemini_tts: bool | None = None
-    gemini_tts_voice: str | None = None
     # Behavior
     rate_limit_capacity: int | None = None
     rate_limit_refill_per_second: float | None = None
