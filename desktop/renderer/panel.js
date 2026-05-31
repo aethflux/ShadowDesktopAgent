@@ -39,6 +39,7 @@ const newSessionBtn = document.getElementById("newSessionBtn");
 const streamingToggle = document.getElementById("streamingToggle");
 const readyDot = document.getElementById("readyDot");
 const workspaceEl = document.getElementById("workspace");
+const railToggle = document.getElementById("railToggle");
 const traceToggle = document.getElementById("traceToggle");
 const timelineSection = document.getElementById("timelineSection");
 const artifactsSection = document.getElementById("artifactsSection");
@@ -846,15 +847,12 @@ function renderCapabilities(capabilities) {
       ),
     ]);
 
-  const tools = (capabilities.tools || []).map(String);
-  capabilitiesEl.appendChild(group("工具", tools.length ? tools : ["（暂无）"]));
-  capabilitiesEl.appendChild(el("div", { className: "cap-divider" }));
-  capabilitiesEl.appendChild(group("模型", [capabilities.provider, capabilities.model]));
+  capabilitiesEl.appendChild(group("主模型", [capabilities.provider || "unknown", capabilities.model || "unknown"]));
   capabilitiesEl.appendChild(
-    group("视觉 / 记忆", [
-      `vision:${capabilities.vision_provider || "?"}`,
-      `embed:${capabilities.embedding_provider || "?"}`,
-    ]),
+    group("视觉模型", [capabilities.vision_provider || "unknown", capabilities.vision_model || "unknown"]),
+  );
+  capabilitiesEl.appendChild(
+    group("向量模型", [capabilities.embedding_provider || "unknown", capabilities.embedding_model || "unknown"]),
   );
   capabilitiesEl.appendChild(
     group("能力", [
@@ -1160,7 +1158,7 @@ composer.addEventListener("submit", async (event) => {
   };
 
   try {
-    if (streamingToggle.checked) {
+    if (streamingToggle?.checked ?? true) {
       await runStreaming(payload);
     } else {
       await runOneShot(payload);
@@ -1427,18 +1425,38 @@ loadCapabilities().catch((error) => {
 refreshReady();
 setInterval(refreshReady, 30_000);
 
-// Trace panel show/hide — lets the user reclaim width for the conversation.
-// The choice is persisted so it survives reopening the console.
+// Side panel show/hide — lets the user reclaim width for the conversation.
+// The choices are persisted so they survive reopening the console.
+const RAIL_COLLAPSED_KEY = "shadow.railPanelCollapsed";
 const TRACE_COLLAPSED_KEY = "shadow.tracePanelCollapsed";
+
+function applyRailPref() {
+  const collapsed = localStorage.getItem(RAIL_COLLAPSED_KEY) === "1";
+  workspaceEl?.classList.toggle("rail-collapsed", collapsed);
+  if (railToggle) {
+    railToggle.textContent = collapsed ? "☰" : "☷";
+    railToggle.title = collapsed ? "显示会话栏" : "隐藏会话栏";
+    railToggle.setAttribute("aria-label", railToggle.title);
+    railToggle.classList.toggle("active", !collapsed);
+  }
+}
 
 function applyTracePref() {
   const collapsed = localStorage.getItem(TRACE_COLLAPSED_KEY) === "1";
   workspaceEl?.classList.toggle("trace-collapsed", collapsed);
   if (traceToggle) {
     traceToggle.textContent = collapsed ? "◨" : "◧";
+    traceToggle.title = collapsed ? "显示运行详情" : "隐藏运行详情";
+    traceToggle.setAttribute("aria-label", traceToggle.title);
     traceToggle.classList.toggle("active", !collapsed);
   }
 }
+
+railToggle?.addEventListener("click", () => {
+  const collapsed = !workspaceEl.classList.contains("rail-collapsed");
+  localStorage.setItem(RAIL_COLLAPSED_KEY, collapsed ? "1" : "0");
+  applyRailPref();
+});
 
 traceToggle?.addEventListener("click", () => {
   const collapsed = !workspaceEl.classList.contains("trace-collapsed");
@@ -1446,6 +1464,7 @@ traceToggle?.addEventListener("click", () => {
   applyTracePref();
 });
 
+applyRailPref();
 applyTracePref();
 
 // ===========================================================================
@@ -1460,7 +1479,7 @@ let pendingPatch = {};           // unsaved field deltas
 let pendingDesktopPatch = {};    // unsaved desktop preference deltas
 let activeTab = "general";
 
-const DESKTOP_PREF_KEYS = new Set(["avatar", "petVoice", "voiceEnabled", "observeSpeechEnabled"]);
+const DESKTOP_PREF_KEYS = new Set(["avatar", "sceneStyle", "petVoice", "voiceEnabled", "observeSpeechEnabled"]);
 const PET_AVATAR_OPTIONS = [
   { value: "streamer", label: "虚拟主播" },
   { value: "swordswoman", label: "见习剑士" },
@@ -1489,6 +1508,34 @@ const PET_VOICE_OPTIONS = [
   { value: "gentleman", label: "青年男声" },
   { value: "storyteller", label: "旁白男声" },
 ];
+const SCENE_STYLE_OPTIONS = [
+  {
+    value: "sakura",
+    label: "樱花书桌",
+    description: "明亮、轻松，适合学习和日常陪伴。",
+  },
+  {
+    value: "rainy",
+    label: "雨夜咖啡馆",
+    description: "安静、沉浸，适合写作和长任务。",
+  },
+  {
+    value: "neon",
+    label: "霓虹直播间",
+    description: "更有活力，适合互动和创作。",
+  },
+];
+const SCENE_STYLE_IDS = new Set(SCENE_STYLE_OPTIONS.map((item) => item.value));
+
+function normalizeSceneStyle(value) {
+  return SCENE_STYLE_IDS.has(value) ? value : "sakura";
+}
+
+function applySceneStyle(value) {
+  document.body.dataset.scene = normalizeSceneStyle(value);
+}
+
+applySceneStyle("sakura");
 
 function setSettingsStatus(text, kind = "") {
   if (!settingsStatus) return;
@@ -1538,10 +1585,18 @@ settingsSave?.addEventListener("click", () => saveSettings());
 window.shadow.onOpenSettings?.((tab) => openSettings(tab || "general"));
 window.shadow.onDesktopPrefsChanged?.((prefs) => {
   desktopPrefsState = { ...(desktopPrefsState || {}), ...prefs };
+  applySceneStyle(desktopPrefsState.sceneStyle);
   if (!settingsBackdrop?.hidden && activeTab === "pet") {
     renderSettingsBody();
   }
 });
+
+window.shadow.desktopPrefs?.()
+  .then((prefs) => {
+    desktopPrefsState = { ...(desktopPrefsState || {}), ...prefs };
+    applySceneStyle(desktopPrefsState.sceneStyle);
+  })
+  .catch((error) => console.warn("desktop prefs initial load failed:", error));
 
 function describeError(error, action) {
   const raw = error?.message || String(error);
@@ -1582,6 +1637,7 @@ async function reloadSettings() {
     ]);
     settingsState = { ...agent };
     desktopPrefsState = { ...desktopPrefs };
+    applySceneStyle(desktopPrefsState.sceneStyle);
     providerListing = providers;
     pendingPatch = {};
     pendingDesktopPatch = {};
@@ -1727,30 +1783,6 @@ function textField(label, hint, key, { type = "text", placeholder = "" } = {}) {
     setPending(key, next);
   });
   return fieldGroup(label, hint, input);
-}
-
-function sliderField(label, hint, key, { min = 0, max = 1, step = 0.05 } = {}) {
-  const wrapper = el("div", { className: "field field-slider" });
-  const top = el("div", { className: "field-slider-top" }, [
-    el("span", { className: "field-label", text: label }),
-    el("span", { className: "field-value", text: String(effectiveValue(key) ?? "") }),
-  ]);
-  const input = document.createElement("input");
-  input.type = "range";
-  input.min = String(min);
-  input.max = String(max);
-  input.step = String(step);
-  input.value = String(effectiveValue(key) ?? min);
-  const valueEl = top.querySelector(".field-value");
-  input.addEventListener("input", () => {
-    const next = Number(input.value);
-    valueEl.textContent = next.toString();
-    setPending(key, next);
-  });
-  wrapper.appendChild(top);
-  wrapper.appendChild(input);
-  if (hint) wrapper.appendChild(el("p", { className: "field-hint", text: hint }));
-  return wrapper;
 }
 
 // ---- Tab content --------------------------------------------------------
@@ -1907,6 +1939,14 @@ function renderPetTab() {
         },
       },
     ),
+    el("div", { className: "settings-divider" }),
+    el("h3", { text: "场景风格" }),
+    el("p", {
+      className: "field-hint",
+      text: "切换后会影响控制台、外部输入框和桌宠气泡。这里会先预览，保存后同步到所有窗口。",
+    }),
+    sceneStyleGrid(),
+    el("div", { className: "settings-divider" }),
     selectField("桌宠音色", "控制桌宠气泡回复使用的 TTS 音色。", "petVoice", PET_VOICE_OPTIONS),
     el("div", { className: "settings-divider" }),
     el("h3", { text: "桌面说话行为" }),
@@ -1928,10 +1968,43 @@ function renderPetTab() {
   settingsBody.appendChild(groups);
 }
 
+function sceneStyleGrid() {
+  const current = normalizeSceneStyle(effectiveValue("sceneStyle"));
+  const grid = el("div", { className: "scene-style-grid" });
+  for (const option of SCENE_STYLE_OPTIONS) {
+    const card = el(
+      "button",
+      {
+        className: `scene-style-card${current === option.value ? " active" : ""}`,
+        attrs: { type: "button", "data-scene": option.value },
+      },
+      [
+        el("span", { className: "scene-style-thumb", attrs: { "data-scene": option.value } }),
+        el("span", { className: "scene-style-copy" }, [
+          el("strong", { text: option.label }),
+          el("span", { text: option.description }),
+        ]),
+      ],
+    );
+    card.addEventListener("click", () => {
+      setPending("sceneStyle", option.value);
+      applySceneStyle(option.value);
+      renderSettingsBody();
+      setSettingsStatus(`已预览场景：${option.label}（保存后同步到桌宠和输入框）`, "dirty");
+    });
+    grid.appendChild(card);
+  }
+  return grid;
+}
+
 function renderVoiceTab() {
   const groups = el("div", { className: "settings-section" }, [
-    el("h3", { text: "Edge Neural TTS（默认云端 TTS）" }),
-    toggleField("启用 Edge TTS", "失败时自动回落到浏览器 Speech Synthesis。", "enable_edge_tts"),
+    el("h3", { text: "桌宠语音 · Edge Neural TTS" }),
+    el("p", {
+      className: "field-hint",
+      text: "桌宠朗读使用微软 Edge 神经网络 TTS；网络失败时自动回落到浏览器本地语音合成。",
+    }),
+    toggleField("启用 Edge TTS", "关闭后桌宠改用浏览器本地 Speech Synthesis 朗读。", "enable_edge_tts"),
     selectField(
       "Edge 音色",
       "微软 Edge 神经网络音色 ID。",
@@ -1949,27 +2022,6 @@ function renderVoiceTab() {
     ),
     textField("语速调整 (%)", "例如 +0% / +10% / -20%。", "edge_tts_rate"),
     textField("音调调整 (Hz)", "例如 +0Hz / +50Hz / -30Hz。", "edge_tts_pitch"),
-    el("div", { className: "settings-divider" }),
-    el("h3", { text: "MiniMax Speech (可选)" }),
-    toggleField("启用 MiniMax 语音", "需要 MINIMAX_API_KEY 有 speech 配额。", "enable_minimax_voice"),
-    textField("MiniMax 音色 ID", "", "minimax_tts_voice_id"),
-    sliderField("MiniMax 语速", "1.0 是常速。", "minimax_tts_speed", { min: 0.5, max: 2.0, step: 0.05 }),
-    sliderField("MiniMax 音调", "0 是默认。", "minimax_tts_pitch", { min: -12, max: 12, step: 1 }),
-    el("div", { className: "settings-divider" }),
-    el("h3", { text: "其它 TTS 引擎" }),
-    toggleField("启用 ModelScope CosyVoice", "中文情感 TTS，音色更自然。", "enable_modelscope_tts"),
-    toggleField("启用 Gemini TTS", "需要 GEMINI_TTS_API_KEY。", "enable_gemini_tts"),
-    selectField(
-      "Gemini 音色",
-      "",
-      "gemini_tts_voice",
-      [
-        { value: "Kore", label: "Kore" },
-        { value: "Charon", label: "Charon" },
-        { value: "Puck", label: "Puck" },
-        { value: "Aoede", label: "Aoede" },
-      ],
-    ),
   ]);
   settingsBody.appendChild(groups);
 }
@@ -1996,7 +2048,7 @@ function renderAboutTab() {
     `Provider: ${settingsState.provider} → ${settingsState.model}`,
     `Vision:   ${settingsState.vision_provider} → ${settingsState.vision_model}`,
     `Edge TTS: ${settingsState.enable_edge_tts ? "on" : "off"} (${settingsState.edge_tts_voice})`,
-    `Pet:      ${desktopPrefsState?.avatar || "streamer"} · ${desktopPrefsState?.petVoice || "warm-girl"} · voice ${desktopPrefsState?.voiceEnabled ? "on" : "off"}`,
+    `Pet:      ${desktopPrefsState?.avatar || "streamer"} · scene ${desktopPrefsState?.sceneStyle || "sakura"} · ${desktopPrefsState?.petVoice || "warm-girl"} · voice ${desktopPrefsState?.voiceEnabled ? "on" : "off"}`,
     `Memory:   semantic ${settingsState.enable_semantic_memory ? "on" : "off"} · top-k ${settingsState.semantic_top_k}`,
     `Rate limit: ${settingsState.rate_limit_capacity} tokens @ ${settingsState.rate_limit_refill_per_second}/s`,
   ];

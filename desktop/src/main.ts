@@ -10,6 +10,7 @@ type DragState = { startMouse: Point; startWindow: Point };
 /** Window-local UX preferences. Persisted to ``userData/desktop-prefs.json``. */
 type DesktopPrefs = {
   avatar: string;
+  sceneStyle: string;
   petVoice: string;
   voiceEnabled: boolean;
   observeSpeechEnabled: boolean;
@@ -44,6 +45,7 @@ const DEFAULT_PREFS: DesktopPrefs = {
   // Must match the default persona (swordswoman_partner / 见习剑士) so the
   // on-screen form and personality agree out of the box.
   avatar: "swordswoman",
+  sceneStyle: "sakura",
   petVoice: "warm-girl",
   voiceEnabled: true,
   observeSpeechEnabled: true
@@ -63,8 +65,14 @@ const PET_VOICE_OPTIONS = [
   { id: "storyteller", label: "旁白男声" }
 ];
 
+const SCENE_STYLE_OPTIONS = [
+  { id: "sakura", label: "樱花书桌" },
+  { id: "rainy", label: "雨夜咖啡馆" },
+  { id: "neon", label: "霓虹直播间" }
+];
+
 const CHAT_WINDOW_WIDTH = 300;
-const CHAT_WINDOW_HEIGHT = 62;
+const CHAT_WINDOW_HEIGHT = 46;
 const WINDOW_MARGIN = 24;
 
 let petWindow: BrowserWindow | null = null;
@@ -116,6 +124,7 @@ function applyPrefsPatch(patch: Partial<DesktopPrefs>): DesktopPrefs {
   desktopPrefs = { ...desktopPrefs, ...patch };
   savePrefs(desktopPrefs);
   sendToWindow(petWindow, "app:prefs-changed", desktopPrefs);
+  sendToWindow(chatWindow, "app:prefs-changed", desktopPrefs);
   sendToWindow(panelWindow, "app:prefs-changed", desktopPrefs);
   return desktopPrefs;
 }
@@ -531,6 +540,13 @@ async function buildContextMenu(): Promise<Menu> {
     click: () => applyPrefsPatch({ petVoice: option.id })
   }));
 
+  const sceneStyleSubmenu: MenuItemConstructorOptions[] = SCENE_STYLE_OPTIONS.map((option) => ({
+    label: option.label,
+    type: "radio" as const,
+    checked: desktopPrefs.sceneStyle === option.id,
+    click: () => applyPrefsPatch({ sceneStyle: option.id })
+  }));
+
   const template: MenuItemConstructorOptions[] = [
     { label: "打开控制台", click: () => openPanelWindow() },
     { type: "separator" },
@@ -558,6 +574,7 @@ async function buildContextMenu(): Promise<Menu> {
     },
     { type: "separator" },
     { label: "切换形象 →", submenu: avatarSubmenu },
+    { label: "切换场景风格 →", submenu: sceneStyleSubmenu },
     { label: "切换音色 →", submenu: petVoiceSubmenu },
     { type: "separator" },
     { label: "切换对话模型 →", submenu: providerSubmenu },

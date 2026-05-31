@@ -8,6 +8,7 @@ type AgentSettings = Record<string, unknown>;
 /** Window-local UX preferences (Electron-side only — not synced to backend). */
 type DesktopPrefs = {
   avatar: string;
+  sceneStyle: string;
   petVoice: string;
   voiceEnabled: boolean;
   observeSpeechEnabled: boolean;

@@ -89,3 +89,235 @@ input:disabled,
 button:disabled {
   opacity: 0.62;
 }
+
+:root {
+  --scene-bg: url("./assets/scenes/scene-sakura-study.png");
+  --scene-soft: rgba(255, 240, 246, 0.88);
+  --scene-ribbon: linear-gradient(90deg, #ff8fb1, #ffba75);
+}
+
+body[data-scene="sakura"] {
+  --line: #50313f;
+  --muted: rgba(80, 49, 63, 0.52);
+  --pink: #ff8fb1;
+  --pink-deep: #e85d8d;
+  --surface: rgba(255, 250, 253, 0.92);
+  --scene-bg: url("./assets/scenes/scene-sakura-study.png");
+  --scene-soft: rgba(255, 240, 246, 0.88);
+  --scene-ribbon: linear-gradient(90deg, #ff8fb1, #ffba75);
+}
+
+body[data-scene="rainy"] {
+  --line: #253936;
+  --muted: rgba(37, 57, 54, 0.54);
+  --pink: #e26c8f;
+  --pink-deep: #168f86;
+  --surface: rgba(247, 255, 253, 0.92);
+  --scene-bg: url("./assets/scenes/scene-rainy-cafe.png");
+  --scene-soft: rgba(229, 250, 247, 0.88);
+  --scene-ribbon: linear-gradient(90deg, #168f86, #e26c8f);
+}
+
+body[data-scene="neon"] {
+  --line: #332935;
+  --muted: rgba(51, 41, 53, 0.54);
+  --pink: #ff78a0;
+  --pink-deep: #eb5c86;
+  --surface: rgba(255, 250, 253, 0.9);
+  --scene-bg: url("./assets/scenes/scene-neon-studio.png");
+  --scene-soft: rgba(233, 255, 251, 0.86);
+  --scene-ribbon: linear-gradient(90deg, #ef5e8a, #23c4be);
+}
+
+.chat-shell {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(255, 255, 255, 0.72);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), var(--scene-soft)),
+    var(--scene-bg) center / cover no-repeat;
+  box-shadow:
+    0 14px 28px rgba(95, 56, 76, 0.16),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+}
+
+.chat-shell::before {
+  content: "";
+  position: absolute;
+  left: 34px;
+  right: 64px;
+  top: 0;
+  height: 4px;
+  border-radius: 0 0 999px 999px;
+  background: var(--scene-ribbon);
+  opacity: 0.88;
+  pointer-events: none;
+}
+
+.chat-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 8% 20%, rgba(255, 255, 255, 0.64) 0 2px, transparent 3px),
+    radial-gradient(circle at 92% 72%, rgba(255, 255, 255, 0.58) 0 2px, transparent 3px);
+  pointer-events: none;
+}
+
+.drag-handle,
+input,
+button {
+  position: relative;
+  z-index: 1;
+}
+
+input {
+  border-color: rgba(80, 49, 63, 0.16);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72) inset;
+}
+
+input:focus {
+  border-color: var(--pink-deep);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+button {
+  border-color: transparent;
+  background: var(--scene-ribbon);
+  box-shadow: 0 7px 14px rgba(198, 80, 124, 0.22);
+}
+
+.chat-shell {
+  width: 340px;
+  height: 68px;
+  grid-template-columns: 30px 1fr 58px;
+  gap: 8px;
+  padding: 10px 11px;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.88), var(--scene-soft)),
+    var(--scene-bg) center / cover no-repeat;
+  box-shadow:
+    0 14px 30px rgba(95, 56, 76, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.68) inset;
+}
+
+.chat-shell::before {
+  left: 48px;
+  right: 70px;
+  height: 4px;
+}
+
+.chat-shell::after {
+  background:
+    radial-gradient(circle at 10% 18%, rgba(255, 255, 255, 0.64) 0 2px, transparent 3px),
+    radial-gradient(circle at 94% 74%, rgba(255, 255, 255, 0.58) 0 2px, transparent 3px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.12), transparent 38%, rgba(255, 255, 255, 0.16));
+}
+
+.drag-handle {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.46)),
+    var(--scene-ribbon);
+  opacity: 1;
+  box-shadow: 0 8px 16px rgba(198, 80, 124, 0.16);
+}
+
+.drag-handle::before,
+.drag-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.drag-handle::before {
+  top: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50% 50% 50% 2px;
+  background: rgba(255, 255, 255, 0.9);
+  transform: translateX(-50%) rotate(-45deg);
+}
+
+.drag-handle::after {
+  bottom: 8px;
+  width: 4px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+input,
+button {
+  height: 40px;
+  font-size: 13px;
+}
+
+input {
+  padding: 0 12px;
+  border-color: var(--pink-deep);
+  border-radius: 8px;
+}
+
+button {
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+/* ---- Compact, refined floating input --------------------------------- *
+ * The scene-themed version above is pretty but bulky. Slim it to a clean
+ * pill: smaller footprint, a subtle grip, and no ribbon/corner-dot extras. */
+.chat-shell {
+  width: 300px;
+  height: 46px;
+  grid-template-columns: 12px 1fr 46px;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 13px;
+}
+
+.chat-shell::before,
+.chat-shell::after {
+  display: none;
+}
+
+.drag-handle {
+  width: 12px;
+  height: 22px;
+  border: none;
+  border-radius: 5px;
+  background:
+    radial-gradient(circle, var(--muted) 1.2px, transparent 1.6px) center / 5px 7px;
+  box-shadow: none;
+  opacity: 0.5;
+}
+
+.drag-handle::before,
+.drag-handle::after {
+  display: none;
+}
+
+input,
+button {
+  height: 30px;
+  font-size: 12px;
+}
+
+input {
+  padding: 0 11px;
+  border-radius: 8px;
+}
+
+button {
+  border-radius: 8px;
+  font-weight: 600;
+}

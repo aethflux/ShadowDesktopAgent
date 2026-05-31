@@ -126,6 +126,36 @@ body {
   --avatar-glow: rgba(156, 126, 205, 0.42);
 }
 
+body[data-scene="sakura"] {
+  --pink: #ff8fb1;
+  --pink-deep: #e85d8d;
+  --teal: #27aaa4;
+  --aura-a: rgba(255, 198, 220, 0.52);
+  --aura-b: rgba(190, 238, 228, 0.42);
+  --pet-bubble-bg: rgba(255, 250, 253, 0.96);
+  --pet-bubble-line: rgba(222, 145, 173, 0.3);
+}
+
+body[data-scene="rainy"] {
+  --pink: #e26c8f;
+  --pink-deep: #168f86;
+  --teal: #168f86;
+  --aura-a: rgba(29, 167, 158, 0.42);
+  --aura-b: rgba(255, 212, 140, 0.34);
+  --pet-bubble-bg: rgba(247, 255, 253, 0.96);
+  --pet-bubble-line: rgba(70, 176, 166, 0.32);
+}
+
+body[data-scene="neon"] {
+  --pink: #ff78a0;
+  --pink-deep: #eb5c86;
+  --teal: #23c4be;
+  --aura-a: rgba(255, 122, 159, 0.48);
+  --aura-b: rgba(35, 196, 190, 0.42);
+  --pet-bubble-bg: rgba(255, 250, 253, 0.95);
+  --pet-bubble-line: rgba(35, 196, 190, 0.32);
+}
+
 .watch-dot {
   position: absolute;
   right: 22px;
@@ -150,9 +180,9 @@ body {
   top: 4px;
   max-width: 220px;
   padding: 10px 12px;
-  border: 1px solid rgba(75, 58, 58, 0.16);
+  border: 1px solid var(--pet-bubble-line, rgba(75, 58, 58, 0.16));
   border-radius: 14px 14px 14px 4px;
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--pet-bubble-bg, rgba(255, 255, 255, 0.96));
   color: var(--line);
   font-size: 12px;
   line-height: 1.4;
@@ -172,8 +202,8 @@ body {
   bottom: -8px;
   width: 12px;
   height: 8px;
-  background: rgba(255, 255, 255, 0.96);
-  border-left: 1px solid rgba(75, 58, 58, 0.16);
+  background: var(--pet-bubble-bg, rgba(255, 255, 255, 0.96));
+  border-left: 1px solid var(--pet-bubble-line, rgba(75, 58, 58, 0.16));
   clip-path: polygon(0 0, 100% 0, 0 100%);
 }
 

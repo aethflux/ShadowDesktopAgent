@@ -49,6 +49,15 @@ body {
   grid-template-columns: 248px minmax(0, 1fr);
 }
 
+.workspace.rail-collapsed {
+  grid-template-columns: minmax(0, 1fr) 332px;
+}
+
+.workspace.rail-collapsed.trace-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace.rail-collapsed .rail,
 .workspace.trace-collapsed .trace {
   display: none;
 }
@@ -509,11 +518,12 @@ details[open] > .trace-collapse-head .rail-chevron {
 
 textarea {
   width: 100%;
-  min-height: 104px;
+  min-height: 56px;
+  max-height: 200px;
   resize: vertical;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 12px;
+  padding: 10px 12px;
   color: var(--text);
   background: var(--surface-soft);
   font: inherit;
@@ -1188,12 +1198,29 @@ button:disabled {
   .workspace {
     grid-template-columns: 220px minmax(0, 1fr) 300px;
   }
+
+  .workspace.rail-collapsed {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+
+  .workspace.trace-collapsed {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .workspace.rail-collapsed.trace-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 920px) {
   .workspace,
   .workspace.trace-collapsed {
     grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .workspace.rail-collapsed,
+  .workspace.rail-collapsed.trace-collapsed {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .trace {
@@ -1463,27 +1490,6 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.field-slider {
-  display: grid;
-  gap: 8px;
-}
-
-.field-slider-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.field-value {
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.field input[type="range"] {
-  width: 100%;
-  accent-color: var(--accent);
-}
 
 .about-pre {
   padding: 12px 14px;
@@ -1921,4 +1927,504 @@ button:disabled {
   border-color: var(--accent);
   outline: 2px solid rgba(37, 99, 235, 0.2);
   outline-offset: 1px;
+}
+
+/* =========================================================================
+   Scene style layer — console as a companion space, not an admin dashboard
+   ========================================================================= */
+
+:root {
+  --scene-bg: url("./assets/scenes/scene-sakura-study.png");
+  --scene-tint: rgba(255, 249, 253, 0.64);
+  --assistant-bubble: rgba(255, 255, 255, 0.9);
+  --user-gradient: linear-gradient(135deg, #f36f9b, #ff9b78);
+  --decor-line: rgba(233, 93, 141, 0.32);
+}
+
+body[data-scene="sakura"] {
+  --bg: #fff8fb;
+  --surface: rgba(255, 255, 255, 0.88);
+  --surface-soft: rgba(255, 250, 253, 0.82);
+  --surface-hover: rgba(255, 236, 245, 0.92);
+  --text: #302633;
+  --muted: #7a6d77;
+  --line: rgba(222, 145, 173, 0.34);
+  --line-strong: rgba(215, 110, 154, 0.48);
+  --accent: #e95d8d;
+  --accent-soft: #fff0f6;
+  --accent-hover: #cf4775;
+  --ok: #168564;
+  --ok-soft: #e9fbf3;
+  --warn: #a15c09;
+  --danger: #c94b43;
+  --danger-soft: #fff0ef;
+  --scene-bg: url("./assets/scenes/scene-sakura-study.png");
+  --scene-tint: rgba(255, 249, 253, 0.64);
+  --assistant-bubble: rgba(255, 255, 255, 0.9);
+  --user-gradient: linear-gradient(135deg, #f36f9b, #ff9b78);
+  --decor-line: rgba(233, 93, 141, 0.32);
+}
+
+body[data-scene="rainy"] {
+  --bg: #f2fbf9;
+  --surface: rgba(253, 255, 254, 0.88);
+  --surface-soft: rgba(243, 253, 251, 0.82);
+  --surface-hover: rgba(225, 248, 246, 0.92);
+  --text: #233331;
+  --muted: #637673;
+  --line: rgba(70, 176, 166, 0.3);
+  --line-strong: rgba(36, 147, 139, 0.48);
+  --accent: #168f86;
+  --accent-soft: #e5faf7;
+  --accent-hover: #0f746d;
+  --ok: #168564;
+  --ok-soft: #e9fbf3;
+  --warn: #a15c09;
+  --danger: #c94b43;
+  --danger-soft: #fff0ef;
+  --scene-bg: url("./assets/scenes/scene-rainy-cafe.png");
+  --scene-tint: rgba(246, 255, 253, 0.66);
+  --assistant-bubble: rgba(255, 255, 255, 0.9);
+  --user-gradient: linear-gradient(135deg, #1da79e, #e26c8f);
+  --decor-line: rgba(29, 167, 158, 0.3);
+}
+
+body[data-scene="neon"] {
+  --bg: #fff8fb;
+  --surface: rgba(255, 255, 255, 0.86);
+  --surface-soft: rgba(255, 250, 253, 0.78);
+  --surface-hover: rgba(232, 255, 252, 0.9);
+  --text: #2b2932;
+  --muted: #716f78;
+  --line: rgba(255, 122, 159, 0.32);
+  --line-strong: rgba(35, 196, 190, 0.46);
+  --accent: #eb5c86;
+  --accent-soft: #e9fffb;
+  --accent-hover: #c9456c;
+  --ok: #128a65;
+  --ok-soft: #e9fbf3;
+  --warn: #a15c09;
+  --danger: #c94b43;
+  --danger-soft: #fff0ef;
+  --scene-bg: url("./assets/scenes/scene-neon-studio.png");
+  --scene-tint: rgba(255, 248, 252, 0.6);
+  --assistant-bubble: rgba(255, 255, 255, 0.88);
+  --user-gradient: linear-gradient(135deg, #ef5e8a, #23c4be);
+  --decor-line: rgba(35, 196, 190, 0.34);
+}
+
+.app {
+  position: relative;
+}
+
+.app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(180deg, var(--scene-tint), rgba(255, 255, 255, 0.52)),
+    var(--scene-bg) center / cover no-repeat;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.workspace {
+  position: relative;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.2)),
+    rgba(255, 255, 255, 0.08);
+}
+
+.rail,
+.chat,
+.trace,
+.modal {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px) saturate(1.06);
+}
+
+.rail,
+.trace {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28) inset;
+}
+
+.rail-brand {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.52)),
+    var(--accent-soft);
+  box-shadow: var(--shadow-sm);
+}
+
+.rail-logo {
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.86), var(--accent-soft));
+  box-shadow: 0 6px 18px rgba(233, 93, 141, 0.18);
+}
+
+.rail-brand-text h1,
+.chat-head-main h2,
+.trace-head h2 {
+  letter-spacing: 0;
+}
+
+.chat-head,
+.trace-head {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.42)),
+    linear-gradient(90deg, transparent, var(--accent-soft));
+}
+
+.chat-log {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.58)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0 1px, transparent 1px 20px),
+    var(--scene-bg) center / cover no-repeat;
+}
+
+.msg {
+  border-color: var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(88, 54, 72, 0.12);
+}
+
+.msg.assistant {
+  position: relative;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.msg.assistant::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: -1px;
+  width: 48px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--decor-line);
+}
+
+.msg.user {
+  background: var(--user-gradient);
+  border-color: transparent;
+  box-shadow: 0 12px 28px rgba(198, 80, 124, 0.2);
+}
+
+.composer {
+  border-top-color: var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.88)),
+    var(--accent-soft);
+}
+
+textarea,
+input,
+select {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: var(--line);
+}
+
+textarea:focus,
+input:focus,
+select:focus {
+  border-color: var(--line-strong);
+  outline-color: var(--decor-line);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.composer button,
+.ghost,
+button,
+.status-pill,
+.session-item,
+.trace-collapse,
+.rail-collapse,
+.settings-summary-card,
+.step,
+.timeline-item,
+.artifact-item,
+.field input,
+.field select,
+.field textarea {
+  border-radius: 8px;
+}
+
+.composer button:not(.composer-icon),
+#settingsSave {
+  border-color: transparent;
+  background: var(--user-gradient);
+  box-shadow: 0 10px 22px rgba(198, 80, 124, 0.18);
+}
+
+.ghost,
+.composer-icon {
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--accent);
+}
+
+.ghost:hover,
+.composer-icon:hover,
+.session-item:hover,
+.persona-preset:hover {
+  background: var(--accent-soft);
+}
+
+.session-item {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.session-item.active {
+  border-color: var(--line-strong);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.86), var(--accent-soft));
+}
+
+.task-content,
+.trace-collapse,
+.rail-collapse,
+.step,
+.timeline-item,
+.artifact-item {
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.scene-style-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.scene-style-card {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.05s;
+}
+
+.scene-style-card:hover {
+  border-color: var(--line-strong);
+  background: var(--accent-soft);
+}
+
+.scene-style-card:active {
+  transform: scale(0.99);
+}
+
+.scene-style-card.active {
+  border-color: var(--line-strong);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), var(--accent-soft));
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.scene-style-thumb {
+  height: 74px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background-position: center;
+  background-size: cover;
+}
+
+.scene-style-thumb[data-scene="sakura"] {
+  background-image: url("./assets/scenes/scene-sakura-study.png");
+}
+
+.scene-style-thumb[data-scene="rainy"] {
+  background-image: url("./assets/scenes/scene-rainy-cafe.png");
+}
+
+.scene-style-thumb[data-scene="neon"] {
+  background-image: url("./assets/scenes/scene-neon-studio.png");
+}
+
+.scene-style-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.scene-style-copy strong {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.scene-style-copy span {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* Final layout polish for the scene-backed console. */
+.app::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.5)),
+    var(--scene-bg) center / cover no-repeat;
+  opacity: 1;
+}
+
+.rail,
+.chat,
+.trace {
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(16px) saturate(1.08);
+}
+
+.rail {
+  border-right-color: rgba(255, 255, 255, 0.38);
+}
+
+.trace {
+  border-left-color: rgba(255, 255, 255, 0.38);
+}
+
+.chat-log {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.32)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0 1px, transparent 1px 22px);
+}
+
+.chat-head,
+.trace-head {
+  border-bottom-color: rgba(255, 255, 255, 0.4);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.38)),
+    linear-gradient(90deg, transparent, var(--accent-soft));
+}
+
+#railToggle,
+#traceToggle {
+  min-width: 38px;
+  height: 34px;
+  padding: 0;
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 8px 18px rgba(198, 80, 124, 0.12);
+}
+
+#railToggle.active,
+#traceToggle.active {
+  color: #ffffff;
+  background: var(--user-gradient);
+}
+
+.composer {
+  position: relative;
+  margin: 12px 20px 18px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.58)),
+    var(--accent-soft);
+  box-shadow:
+    0 18px 38px rgba(88, 54, 72, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.42) inset;
+}
+
+.composer::before {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 96px;
+  top: 0;
+  height: 4px;
+  border-radius: 0 0 999px 999px;
+  background: var(--user-gradient);
+  opacity: 0.78;
+}
+
+.composer textarea {
+  min-height: 56px;
+  border-color: var(--line-strong);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72) inset;
+}
+
+.composer textarea:focus {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.composer-row {
+  align-items: center;
+}
+
+.composer-buttons {
+  margin-left: auto;
+}
+
+.composer-icon {
+  width: 38px;
+  height: 38px;
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 8px 16px rgba(88, 54, 72, 0.08);
+}
+
+.composer button[type="submit"] {
+  min-width: 72px;
+  height: 40px;
+  padding: 0 18px;
+  font-weight: 700;
+}
+
+/* Keep the scene artwork visible across the full console. */
+.app::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.18)),
+    var(--scene-bg) center / cover no-repeat;
+}
+
+.workspace {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.08)),
+    var(--scene-bg) center / cover no-repeat;
+}
+
+.chat {
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.chat-log {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0 1px, transparent 1px 24px);
+}
+
+.rail,
+.trace {
+  background: rgba(255, 255, 255, 0.42);
+  backdrop-filter: blur(10px) saturate(1.04);
+}
+
+.chat-head,
+.trace-head {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.64), rgba(255, 255, 255, 0.26)),
+    linear-gradient(90deg, transparent, var(--accent-soft));
+}
+
+.rail-brand,
+.session-item,
+.rail-collapse,
+.trace-collapse,
+.task-content,
+.step,
+.timeline-item,
+.artifact-item {
+  background: rgba(255, 255, 255, 0.76);
 }

@@ -2,6 +2,12 @@ const form = document.getElementById("chatForm");
 const input = document.getElementById("chatInput");
 const sendBtn = document.getElementById("sendBtn");
 
+const SCENE_STYLES = new Set(["sakura", "rainy", "neon"]);
+
+function applySceneStyle(value) {
+  document.body.dataset.scene = SCENE_STYLES.has(value) ? value : "sakura";
+}
+
 function setBusy(next) {
   input.disabled = next;
   sendBtn.disabled = next;
@@ -31,5 +37,10 @@ window.shadow.onPetChatBusyChanged?.((busy) => {
 });
 
 window.addEventListener("DOMContentLoaded", () => {
+  applySceneStyle("sakura");
+  window.shadow.desktopPrefs?.()
+    .then((prefs) => applySceneStyle(prefs?.sceneStyle))
+    .catch((error) => console.warn("desktop prefs load failed:", error));
+  window.shadow.onDesktopPrefsChanged?.((prefs) => applySceneStyle(prefs?.sceneStyle));
   input.focus();
 });

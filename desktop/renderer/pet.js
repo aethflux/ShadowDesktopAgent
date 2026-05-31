@@ -30,11 +30,13 @@ const AVATAR_ASSETS = {
 const AVATAR_OPTIONS = Object.keys(AVATAR_ASSETS);
 const AVATAR_CLASSES = AVATAR_OPTIONS.map((name) => `avatar-${name}`);
 const PET_VOICE_OPTIONS = ["warm-girl", "sweet-lady", "gentleman", "storyteller"];
+const SCENE_STYLE_OPTIONS = ["sakura", "rainy", "neon"];
 
 let selectedAvatar = "streamer";
 let selectedVoice = "warm-girl";
 let desktopPrefs = {
   avatar: selectedAvatar,
+  sceneStyle: "sakura",
   petVoice: selectedVoice,
   voiceEnabled: true,
   observeSpeechEnabled: true,
@@ -70,14 +72,22 @@ function applyVoice(value) {
   selectedVoice = PET_VOICE_OPTIONS.includes(value) ? value : "warm-girl";
 }
 
+function applySceneStyle(value) {
+  const sceneStyle = SCENE_STYLE_OPTIONS.includes(value) ? value : "sakura";
+  document.body.dataset.scene = sceneStyle;
+  if (petShell) petShell.dataset.scene = sceneStyle;
+}
+
 applyAvatar(selectedAvatar);
 applyVoice(selectedVoice);
+applySceneStyle(desktopPrefs.sceneStyle);
 
 async function loadDesktopPrefs() {
   try {
     desktopPrefs = { ...desktopPrefs, ...(await window.shadow.desktopPrefs()) };
     applyAvatar(desktopPrefs.avatar);
     applyVoice(desktopPrefs.petVoice);
+    applySceneStyle(desktopPrefs.sceneStyle);
   } catch (error) {
     console.warn("[pet] failed to load desktop prefs", error);
   }
@@ -87,6 +97,7 @@ window.shadow.onDesktopPrefsChanged?.((prefs) => {
   desktopPrefs = { ...desktopPrefs, ...prefs };
   applyAvatar(desktopPrefs.avatar);
   applyVoice(desktopPrefs.petVoice);
+  applySceneStyle(desktopPrefs.sceneStyle);
   if (!desktopPrefs.voiceEnabled || (!desktopPrefs.observeSpeechEnabled && currentSpeechSource === "observe")) {
     stopSpeech();
   }
