@@ -66,7 +66,6 @@ MUTABLE_FIELDS: frozenset[str] = frozenset(
         "rate_limit_capacity",
         "rate_limit_refill_per_second",
         "tts_audio_retention_hours",
-        "enable_gui_automation",
         # Permission broker — workspace_*_json are JSON arrays of paths.
         "workspace_allowlist_json",
         "workspace_denylist_json",

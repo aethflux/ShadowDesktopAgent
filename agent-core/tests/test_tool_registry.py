@@ -23,7 +23,6 @@ class _EchoTool(Tool):
 def test_registry_lists_default_tools() -> None:
     registry = ToolRegistry()
     names = registry.names()
-    # ``gui.act`` is now gated behind ``enable_gui_automation``; the rest are always on.
     for expected in ("terminal.run", "terminal.reset", "screen.capture"):
         assert expected in names, f"missing built-in tool: {expected}"
 

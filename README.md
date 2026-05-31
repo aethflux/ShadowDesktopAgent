@@ -9,7 +9,7 @@ Shadow 是一个常驻桌面的多模态 Agent。项目由 FastAPI 后端和 Ele
 - 多模型：文本、视觉、embedding 和 TTS 可独立配置。
 - 记忆：JSONL 会话历史 + ChromaDB 语义检索。
 - 工具：受控终端、外部 CLI、截图、MCP filesystem、本地 skills。
-- 安全：限制工作目录、拦截高风险命令、过滤 MCP 写入类工具，GUI 自动化默认关闭。
+- 安全：限制工作目录、拦截高风险命令、过滤 MCP 写入类工具；不做桌面 GUI 自动化（无鼠标键盘模拟）。
 
 ## 技术栈
 

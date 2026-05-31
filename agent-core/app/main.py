@@ -225,7 +225,6 @@ async def get_settings() -> SettingsView:
         rate_limit_capacity=settings.rate_limit_capacity,
         rate_limit_refill_per_second=settings.rate_limit_refill_per_second,
         tts_audio_retention_hours=settings.tts_audio_retention_hours,
-        enable_gui_automation=settings.enable_gui_automation,
         workspace_allowlist_json=settings.workspace_allowlist_json,
         workspace_denylist_json=settings.workspace_denylist_json,
         require_path_confirmation=settings.require_path_confirmation,

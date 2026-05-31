@@ -2224,9 +2224,6 @@ function renderMemoryTab() {
     textField("限流容量 (token-bucket)", "0 = 关闭限流。", "rate_limit_capacity", { type: "number" }),
     textField("限流补充速率 (req/s)", "", "rate_limit_refill_per_second", { type: "number" }),
     textField("TTS 音频保留 (小时)", "0 = 永久保留；启动时清理过期文件。", "tts_audio_retention_hours", { type: "number" }),
-    el("div", { className: "settings-divider" }),
-    el("h3", { text: "桌面自动化" }),
-    toggleField("允许 GUI 自动化工具", "默认关闭，启用后 LLM 可以请求点击/按键。", "enable_gui_automation"),
   ]);
   settingsBody.appendChild(groups);
 }

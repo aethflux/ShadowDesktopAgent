@@ -286,7 +286,6 @@ class SettingsView(BaseModel):
     rate_limit_capacity: int
     rate_limit_refill_per_second: float
     tts_audio_retention_hours: int
-    enable_gui_automation: bool
     # Permission broker (workspace_*_json are JSON arrays of paths)
     workspace_allowlist_json: str
     workspace_denylist_json: str
@@ -329,7 +328,6 @@ class SettingsPatch(BaseModel):
     rate_limit_capacity: int | None = None
     rate_limit_refill_per_second: float | None = None
     tts_audio_retention_hours: int | None = None
-    enable_gui_automation: bool | None = None
     # Permission broker
     workspace_allowlist_json: str | None = None
     workspace_denylist_json: str | None = None

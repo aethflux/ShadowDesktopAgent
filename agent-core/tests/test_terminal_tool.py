@@ -98,7 +98,8 @@ def test_package_mutation_commands_are_blocked() -> None:
     assert "package mutation commands are blocked" in result
 
 
-def test_gui_automation_is_not_registered_by_default() -> None:
+def test_no_gui_automation_tool() -> None:
+    # GUI automation was removed — the project never controls the real desktop.
     registry = ToolRegistry()
 
     assert "gui.act" not in registry.names()
