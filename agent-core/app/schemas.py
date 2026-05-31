@@ -107,6 +107,20 @@ class VoiceTTSResponse(BaseModel):
     audio_url: str | None = None  # set when cloud TTS generated audio
 
 
+class ImageGenerateRequest(BaseModel):
+    prompt: str
+    purpose: Literal["scene", "avatar", "other"] = "other"
+
+
+class GeneratedImage(BaseModel):
+    id: str
+    url: str
+    prompt: str
+    purpose: str
+    model: str
+    created_at: int
+
+
 class MemoryItem(BaseModel):
     session_id: str
     role: str
@@ -265,6 +279,9 @@ class SettingsView(BaseModel):
     edge_tts_rate: str
     edge_tts_pitch: str
     enable_minimax_voice: bool  # gates the optional ASR endpoint only
+    # Image generation
+    enable_image_generation: bool
+    image_model: str
     # Behavior
     rate_limit_capacity: int
     rate_limit_refill_per_second: float
@@ -305,6 +322,9 @@ class SettingsPatch(BaseModel):
     edge_tts_rate: str | None = None
     edge_tts_pitch: str | None = None
     enable_minimax_voice: bool | None = None
+    # Image generation
+    enable_image_generation: bool | None = None
+    image_model: str | None = None
     # Behavior
     rate_limit_capacity: int | None = None
     rate_limit_refill_per_second: float | None = None

@@ -8,6 +8,7 @@ from app.services.mcp_client import MCPClient
 from app.tools.base import Tool
 from app.tools.cli import ExternalCLITool
 from app.tools.gui import GuiAutomationTool
+from app.tools.image import ImageGenerateTool
 from app.tools.mcp_admin import MCPServerListTool, MCPToolListTool
 from app.tools.mcp_policy import is_mcp_tool_allowed
 from app.tools.mcp_tool import MCPBridgeTool
@@ -33,6 +34,8 @@ class ToolRegistry:
             tools.extend([MCPServerListTool(mcp_client), MCPToolListTool(mcp_client)])
         if settings.enable_gui_automation:
             tools.append(GuiAutomationTool())
+        if settings.enable_image_generation:
+            tools.append(ImageGenerateTool())
         self._tools: dict[str, Tool] = {tool.name: tool for tool in tools}
 
     def specs(self) -> list[dict[str, Any]]:

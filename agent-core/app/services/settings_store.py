@@ -59,6 +59,9 @@ MUTABLE_FIELDS: frozenset[str] = frozenset(
         "edge_tts_rate",
         "edge_tts_pitch",
         "enable_minimax_voice",
+        # Image generation
+        "enable_image_generation",
+        "image_model",
         # Behavior
         "rate_limit_capacity",
         "rate_limit_refill_per_second",

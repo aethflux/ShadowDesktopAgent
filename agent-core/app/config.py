@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     vision_provider: Provider = "modelscope"
     vision_model: str = "Qwen/Qwen3-VL-8B-Instruct"
 
+    # ---- Image generation (text-to-image) ----
+    # ModelScope API-Inference async text-to-image, reusing MODELSCOPE_API_KEY.
+    # The model id is account-dependent — swap IMAGE_MODEL for one your key can
+    # access (e.g. an anime checkpoint for 立绘 vs a scenery model for backgrounds).
+    enable_image_generation: bool = True
+    image_model: str = "MusePublic/489_ckpt_FLUX_1"
+    image_generation_api_base: str = "https://api-inference.modelscope.cn/v1"
+    image_generation_timeout_seconds: int = 150
+
     # Prompt caching (Anthropic explicit; OpenAI auto-cached when prefixes are stable).
     enable_prompt_cache: bool = True
 

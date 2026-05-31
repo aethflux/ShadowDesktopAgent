@@ -124,6 +124,19 @@ EDGE_TTS_PITCH=+0Hz
 
 语音输入（ASR）是可选的 MiniMax 接口，默认关闭（`ENABLE_MINIMAX_VOICE`）。
 
+## 生图（文生图）
+
+接入 ModelScope 文生图，让项目自己定制控制台场景和桌宠立绘：
+
+```env
+ENABLE_IMAGE_GENERATION=true
+IMAGE_MODEL=MusePublic/489_ckpt_FLUX_1     # 换成你的 ModelScope key 能访问的模型
+```
+
+- 复用 `MODELSCOPE_API_KEY`，走 ModelScope 异步文生图任务；生成图片存到 `artifacts/generated/`。
+- 设置页「AI 生成」：输入提示词 → 生成 → 预览 → 一键应用为当前场景或桌宠立绘，含图库（保存 / 应用 / 删除）。
+- 也暴露为 agent 工具 `image.generate`，可在对话里让桌宠按描述作画。
+
 ## 本地验证
 
 后端：

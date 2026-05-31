@@ -17,6 +17,8 @@ from app.rate_limit import TokenBucketRateLimiter
 from app.schemas import (
     ChatRequest,
     ChatResponse,
+    GeneratedImage,
+    ImageGenerateRequest,
     ObservationRequest,
     ObservationResponse,
     PermissionDecision,
@@ -27,6 +29,7 @@ from app.schemas import (
     VoiceTTSRequest,
     VoiceTTSResponse,
 )
+from app.services import image_gen
 from app.services import voice as voice_service
 from app.services.model_client import close_http_client
 from app.services.permission_broker import broker as permission_broker
@@ -128,6 +131,11 @@ app.mount(
     StaticFiles(directory=_audio_dir),
     name="audio",
 )
+app.mount(
+    "/artifacts/generated",
+    StaticFiles(directory=image_gen.generated_dir()),
+    name="generated",
+)
 
 @app.get("/health")
 async def health() -> dict[str, str]:
@@ -176,6 +184,11 @@ async def ready() -> dict:
             "tts_engine": voice_service.active_tts_engine(),
             "asr_enabled": settings.enable_minimax_voice,
         },
+        "image_generation": {
+            "enabled": settings.enable_image_generation,
+            "available": image_gen.image_generation_available(),
+            "model": settings.image_model,
+        },
     }
 
 
@@ -207,6 +220,8 @@ async def get_settings() -> SettingsView:
         edge_tts_rate=settings.edge_tts_rate,
         edge_tts_pitch=settings.edge_tts_pitch,
         enable_minimax_voice=settings.enable_minimax_voice,
+        enable_image_generation=settings.enable_image_generation,
+        image_model=settings.image_model,
         rate_limit_capacity=settings.rate_limit_capacity,
         rate_limit_refill_per_second=settings.rate_limit_refill_per_second,
         tts_audio_retention_hours=settings.tts_audio_retention_hours,
@@ -444,6 +459,39 @@ async def asr(file: UploadFile = File(...)) -> dict:
         raise HTTPException(500, f"ASR failed: {exc}")
 
     return {"text": text, "engine": "minimax"}
+
+
+@app.post("/api/image/generate", response_model=GeneratedImage)
+async def generate_image(request: ImageGenerateRequest) -> GeneratedImage:
+    """Generate an image from a prompt, persist it, and return the gallery record.
+
+    Synchronous from the caller's view but can take tens of seconds (ModelScope
+    runs the diffusion task asynchronously and we poll until it finishes).
+    """
+    if not settings.enable_image_generation:
+        raise HTTPException(503, "Image generation is disabled (ENABLE_IMAGE_GENERATION=false).")
+    try:
+        record = await image_gen.generate_and_save(request.prompt, request.purpose)
+    except image_gen.ImageGenerationError as exc:
+        raise HTTPException(400, str(exc))
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(int(exc.response.status_code), f"ModelScope error: {exc.response.text[:300]}")
+    except Exception as exc:
+        raise HTTPException(500, f"Image generation failed: {exc}")
+    return GeneratedImage(**record)
+
+
+@app.get("/api/image/gallery", response_model=list[GeneratedImage])
+async def image_gallery() -> list[GeneratedImage]:
+    """List previously generated images (most recent first)."""
+    return [GeneratedImage(**record) for record in image_gen.list_gallery()]
+
+
+@app.delete("/api/image/{image_id}")
+async def delete_generated_image(image_id: str) -> dict[str, str]:
+    if not image_gen.delete_image(image_id):
+        raise HTTPException(404, "Generated image not found.")
+    return {"status": "deleted", "id": image_id}
 
 
 @app.post("/api/screen/capture")
