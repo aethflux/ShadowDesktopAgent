@@ -85,6 +85,7 @@ let petWindow: BrowserWindow | null = null;
 let chatWindow: BrowserWindow | null = null;
 let panelWindow: BrowserWindow | null = null;
 let petDragState: DragState | null = null;
+let chatDragState: DragState | null = null;
 let companionWatching = false;
 let desktopPrefs: DesktopPrefs = { ...DEFAULT_PREFS };
 
@@ -685,6 +686,32 @@ app.whenReady().then(() => {
 
   ipcMain.on("pet:drag-end", () => {
     petDragState = null;
+  });
+
+  // Manual drag for the frameless chat-input window. We deliberately avoid CSS
+  // `-webkit-app-region: drag` here: on transparent, always-on-top, frameless
+  // windows it intermittently wedges mouse / move / close on Windows. Driving
+  // the position from IPC (same approach as the pet window) is reliable and
+  // keeps the box draggable even while a turn is in flight.
+  ipcMain.on("chat:drag-start", (_event, point: Point) => {
+    if (!isUsableWindow(chatWindow)) return;
+    const [x, y] = chatWindow.getPosition();
+    chatDragState = { startMouse: point, startWindow: { x, y } };
+  });
+
+  ipcMain.on("chat:drag-move", (_event, point: Point) => {
+    if (!isUsableWindow(chatWindow) || !chatDragState) return;
+    const nextX = chatDragState.startWindow.x + point.x - chatDragState.startMouse.x;
+    const nextY = chatDragState.startWindow.y + point.y - chatDragState.startMouse.y;
+    chatWindow.setPosition(Math.round(nextX), Math.round(nextY), false);
+  });
+
+  ipcMain.on("chat:drag-end", () => {
+    chatDragState = null;
+  });
+
+  ipcMain.on("chat:hide", () => {
+    if (isUsableWindow(chatWindow)) chatWindow.hide();
   });
 
   ipcMain.on("app:request-open-settings", (_event, tab?: string) => {

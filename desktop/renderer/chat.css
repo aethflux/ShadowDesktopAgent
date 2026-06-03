@@ -32,7 +32,7 @@ body {
   box-shadow: 0 8px 20px rgba(127, 76, 60, 0.14);
   color: var(--line);
   backdrop-filter: blur(8px);
-  -webkit-app-region: drag;
+  cursor: move;
 }
 
 .drag-handle {
@@ -51,7 +51,7 @@ button {
   border-radius: 8px;
   font: inherit;
   font-size: 12px;
-  -webkit-app-region: no-drag;
+  cursor: auto;
 }
 
 input {
@@ -89,6 +89,7 @@ input:disabled,
 button:disabled {
   opacity: 0.62;
 }
+
 
 :root {
   --scene-bg: url("./assets/scenes/scene-sakura-study.png");

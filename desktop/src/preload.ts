@@ -81,6 +81,10 @@ contextBridge.exposeInMainWorld("shadow", {
   startPetDrag: (point: Point) => ipcRenderer.send("pet:drag-start", point),
   movePetDrag: (point: Point) => ipcRenderer.send("pet:drag-move", point),
   endPetDrag: () => ipcRenderer.send("pet:drag-end"),
+  startChatDrag: (point: Point) => ipcRenderer.send("chat:drag-start", point),
+  moveChatDrag: (point: Point) => ipcRenderer.send("chat:drag-move", point),
+  endChatDrag: () => ipcRenderer.send("chat:drag-end"),
+  hideChatInput: () => ipcRenderer.send("chat:hide"),
   submitPetChat: (text: string) => ipcRenderer.send("chat:submit", text),
   setPetChatBusy: (busy: boolean) => ipcRenderer.send("chat:busy", busy),
   onPetChatSubmit: (handler: (text: string) => void) => {
@@ -122,6 +126,10 @@ declare global {
       startPetDrag: (point: Point) => void;
       movePetDrag: (point: Point) => void;
       endPetDrag: () => void;
+      startChatDrag: (point: Point) => void;
+      moveChatDrag: (point: Point) => void;
+      endChatDrag: () => void;
+      hideChatInput: () => void;
       submitPetChat: (text: string) => void;
       setPetChatBusy: (busy: boolean) => void;
       onPetChatSubmit: (handler: (text: string) => void) => void;
