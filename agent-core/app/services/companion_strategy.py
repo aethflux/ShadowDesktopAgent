@@ -78,6 +78,11 @@ class SessionState:
     last_interaction_ts: float = time.time()
     last_user_sentiment: str = "neutral"  # positive / neutral / negative
     last_user_message: str = ""
+    last_nudge_text: str | None = None
+    # Proactive chatter cadence + variety (separate from the nudge engine).
+    last_proactive_ts: float = 0.0
+    proactive_source_index: int = 0
+    recent_proactive_texts: list[str] = field(default_factory=list)
 
     def prune_history(self, max_age: float = 600.0) -> None:
         now = time.time()
@@ -230,11 +235,16 @@ class CompanionStrategy:
                 "别忘了喝水和动一动，身体也很重要哦 🌿",
                 "需要我帮你查点什么吗？还是只是想安静写代码？",
             ]
-            # Filter out None during flow.
-            options = [o for o in options if o is not None]
-
         import random
-        return random.choice(options)
+        text_options = [option for option in options if option is not None]
+        non_repeating = [option for option in text_options if option != state.last_nudge_text]
+        pool: list[str | None] = non_repeating or text_options
+        if any(option is None for option in options):
+            pool = [*pool, None]
+        choice = random.choice(pool)
+        if choice:
+            state.last_nudge_text = choice
+        return choice
 
     def record_message(self, session_id: str, message: str) -> None:
         """Call this after every user message to update sentiment tracking."""

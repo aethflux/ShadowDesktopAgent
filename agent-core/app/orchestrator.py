@@ -50,6 +50,68 @@ def _chunk_text(text: str, size: int) -> list[str]:
     return [text[i : i + size] for i in range(0, len(text), size)]
 
 
+_OBSERVATION_TEXT_NOISE_RE = re.compile(
+    r"[\s\u200b\ufeff`*_#>\-—–~!！?？,，.。:：;；、\"“”'‘’()\[\]{}<>《》/\\|]+"
+)
+_OBSERVATION_EMOJI_RE = re.compile(r"[\U00010000-\U0010ffff]")
+_OBSERVATION_LATIN_TERM_RE = re.compile(r"[a-z0-9]{3,}")
+
+
+def _observation_core(text: str) -> str:
+    """Return the actual observation part, dropping prepended nudge text."""
+    parts = [part.strip() for part in re.split(r"\n{2,}", text.strip()) if part.strip()]
+    return parts[-1] if parts else text.strip()
+
+
+def _normalize_observation_reply(text: str) -> str:
+    text = _OBSERVATION_EMOJI_RE.sub("", text.lower())
+    return _OBSERVATION_TEXT_NOISE_RE.sub("", text)
+
+
+def _observation_features(text: str) -> set[str]:
+    normalized = _normalize_observation_reply(text)
+    latin_terms = set(_OBSERVATION_LATIN_TERM_RE.findall(normalized))
+    cjk_text = _OBSERVATION_LATIN_TERM_RE.sub("", normalized)
+    cjk_bigrams = {cjk_text[i : i + 2] for i in range(len(cjk_text) - 1)}
+    return latin_terms | cjk_bigrams
+
+
+def _observation_feature_overlap(left_raw: str, right_raw: str) -> float:
+    left = _observation_features(left_raw)
+    right = _observation_features(right_raw)
+    if not left or not right:
+        return 0.0
+    return 2 * len(left & right) / (len(left) + len(right))
+
+
+def _is_similar_observation_reply(current: str, previous: str | None) -> bool:
+    """Detect repeated companion observations even when phrased slightly differently."""
+    if not current or not previous:
+        return False
+
+    pairs = [
+        (current, previous),
+        (_observation_core(current), _observation_core(previous)),
+        (current, _observation_core(previous)),
+        (_observation_core(current), previous),
+    ]
+    for left_raw, right_raw in pairs:
+        left = _normalize_observation_reply(left_raw)
+        right = _normalize_observation_reply(right_raw)
+        if not left or not right:
+            continue
+        if left == right:
+            return True
+        shorter, longer = sorted((left, right), key=len)
+        if len(shorter) >= 14 and shorter in longer:
+            return True
+        if min(len(left), len(right)) >= 12 and difflib.SequenceMatcher(None, left, right).ratio() >= 0.70:
+            return True
+        if _observation_feature_overlap(left_raw, right_raw) >= 0.27:
+            return True
+    return False
+
+
 class MultiAgentOrchestrator:
     def __init__(self) -> None:
         self.memory = MemoryStore()
@@ -432,8 +494,20 @@ class MultiAgentOrchestrator:
 
         # If the strategy engine decided to nudge, prepend it.
         if nudge:
-            reply = f"{nudge}\n\n{reply}"
+            reply = f"{nudge}\n\n{reply}" if reply else nudge
             should_speak = True
+
+        deduped_reply = False
+        if (
+            request.trigger == "interval"
+            and reply
+            and _is_similar_observation_reply(reply, observation_state.last_comment)
+        ):
+            reply = ""
+            significance = "low"
+            should_speak = False
+            deduped_reply = True
+
         observation_state.observation_count += 1
         if reply:
             observation_state.last_comment = reply
@@ -453,19 +527,41 @@ class MultiAgentOrchestrator:
         trace = AgentTrace(
             active_agent="desktop-agent",
             delegated_to="desktop-agent",
-            reasoning="Continuous screen observation for digital companion mode.",
+            reasoning=(
+                "Continuous screen observation for digital companion mode. "
+                "Suppressed a highly similar observation reply."
+                if deduped_reply
+                else "Continuous screen observation for digital companion mode."
+            ),
             tool_calls=tool_calls,
         )
         artifacts = self._build_artifacts(tool_calls)
-        task = self._build_task(
-            ChatRequest(
-                session_id=request.session_id,
-                message=request.focus or "continuous screen observation",
-            ),
-            "desktop-agent",
-            reply,
-            tool_calls,
-        )
+        if deduped_reply:
+            task = {
+                "title": "similar-observation-skip",
+                "owner": "desktop-agent",
+                "status": "skipped",
+                "reply_preview": "",
+                "step_count": 1,
+                "steps": [
+                    {
+                        "id": "step-1",
+                        "title": "reply-deduplication",
+                        "status": "skipped",
+                        "detail": "Observation reply was too similar to the previous companion line.",
+                    }
+                ],
+            }
+        else:
+            task = self._build_task(
+                ChatRequest(
+                    session_id=request.session_id,
+                    message=request.focus or "continuous screen observation",
+                ),
+                "desktop-agent",
+                reply,
+                tool_calls,
+            )
         return ObservationResponse(
             reply=reply,
             trace=trace,

@@ -143,6 +143,10 @@ _ROLE_ADDENDA: dict[str, str] = {
     "desktop-agent-observation": (
         "你正在做持续屏幕观察。只有在变化值得提醒、用户可能需要鼓励，"
         "或者你能给出有用的简短评论时才说话。回复尽量在 70 个汉字以内。"
+        "如果画面只是同一应用、同一任务或你只能复述上一句，就保持沉默："
+        "reply 返回空字符串，significance 返回 low，should_speak 返回 false。"
+        "不要为了活跃气氛而换个说法重复上一条观察。"
+        "一旦需要说话，必须保持当前人格的称呼、口头禅和语气。"
         "返回严格 JSON：keys=reply, significance(low|medium|high), should_speak, topic。"
     ),
     "terminal-agent": (

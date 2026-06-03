@@ -91,6 +91,14 @@ class DesktopAgent(LLMAgent):
             f"Current request: {message}\n"
             f"Previous observation topic: {observation_state.last_topic or 'none'}\n"
             f"Previous comment: {observation_state.last_comment or 'none'}\n"
+            "Decision rules:\n"
+            "- If this is an interval observation and the screen is still the same app/task, "
+            "or your comment would mostly repeat the previous comment, return reply=\"\", "
+            "significance=\"low\", should_speak=false.\n"
+            "- Do not paraphrase the previous comment just to say something.\n"
+            "- If you do speak, mention one new visible detail or one useful next step, "
+            "and keep the wording in your configured persona.\n"
+            "- Avoid generic filler such as 'I looked at the screen' when there is no new information.\n"
             "Look at the screenshot and decide whether Shadow should say something now."
         )
         messages = [
@@ -124,6 +132,8 @@ class DesktopAgent(LLMAgent):
         if significance not in {"low", "medium", "high"}:
             significance = "medium"
         if not reply:
+            if trigger == "interval":
+                return "", tool_calls, "low", False, str(topic) if topic else None
             reply = "我看了一下屏幕，暂时没有特别需要提醒你的变化。"
             significance = "low"
             should_speak = trigger == "manual"
