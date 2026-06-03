@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, screen, shell, MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, powerMonitor, screen, shell, MenuItemConstructorOptions } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 
@@ -619,6 +619,17 @@ app.whenReady().then(() => {
 
   ipcMain.handle("agent:chat", async (_event, payload) => postJson("/api/chat", payload));
   ipcMain.handle("agent:observe", async (_event, payload) => postJson("/api/companion/observe", payload));
+  ipcMain.handle("agent:companion-chatter", async (_event, payload) => {
+    // Only let Shadow start a proactive topic when the user is actually
+    // present. `powerMonitor` reports system-wide idle seconds, which — unlike
+    // the pet window's local key/mouse events — correctly tells "working in
+    // another app" apart from "stepped away from the machine".
+    const idleSeconds = powerMonitor.getSystemIdleTime();
+    if (idleSeconds > 240) {
+      return { reply: "", should_speak: false, source: "none" };
+    }
+    return postJson("/api/companion/chatter", payload);
+  });
   ipcMain.handle("agent:tts", async (_event, payload) => {
     const response = await postJson("/api/voice/tts", payload);
     return absolutizeBackendUrl(response);

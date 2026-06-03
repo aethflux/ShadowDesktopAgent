@@ -21,6 +21,10 @@ const COMPANION_SESSION_ID = "pet-companion-session";
 const COMPANION_SESSION_TITLE = "桌宠陪伴";
 const COMPANION_HISTORY_RETENTION_MS = 5 * 60_000;
 const OBSERVE_INTERVAL_MS = 45_000;
+// Proactive chatter checks in more often than it speaks; the backend gates the
+// real cadence (~4–5 min) and the main process suppresses it when the user is
+// actually away (system idle).
+const CHATTER_INTERVAL_MS = 60_000;
 const AVATAR_ASSETS = {
   streamer: "./assets/avatars/shadow-streamer.png",
   swordswoman: "./assets/avatars/shadow-swordswoman.png",
@@ -451,6 +455,7 @@ async function say(text, { source = "chat" } = {}) {
 
 let observing = false;
 let observeTimer = null;
+let chatterTimer = null;
 
 function shouldSkipObservation(trigger) {
   return userTurnActive || (trigger === "interval" && Date.now() < suppressObserveUntil);
@@ -499,6 +504,33 @@ async function observe(trigger = "interval") {
     showBubble(`观察失败：${error && error.message ? error.message : String(error)}`);
   } finally {
     observing = false;
+  }
+}
+
+// Proactive companion chatter: occasionally start a light topic (a memory
+// call-back, a time-of-day note, or a free RSS headline) so Shadow feels
+// present even when the screen isn't changing. Cadence + topic source are
+// decided by the backend; the main process suppresses it when the user is
+// actually away (system idle). Best-effort — never surfaces an error bubble.
+async function chatter() {
+  if (userTurnActive || observing) return;
+  if (Date.now() < suppressObserveUntil) return;
+  try {
+    const response = await window.shadow.companionChatter?.({
+      session_id: COMPANION_SESSION_ID,
+      local_hour: new Date().getHours(),
+      trigger: "interval",
+    });
+    if (!response || !response.should_speak || !response.reply) return;
+    if (userTurnActive) return; // a turn may have started while we awaited
+    const text = String(response.reply);
+    recordCompanionHistory("assistant", text, `主动陪聊 · ${response.source || "chatter"}`);
+    showBubble(text.slice(0, 86));
+    if (desktopPrefs.voiceEnabled) {
+      await say(text, { source: "chatter" });
+    }
+  } catch {
+    // Proactive chatter is non-essential; stay quiet on any failure.
   }
 }
 
@@ -574,11 +606,16 @@ function setWatching(next) {
     clearInterval(observeTimer);
     observeTimer = null;
   }
+  if (chatterTimer) {
+    clearInterval(chatterTimer);
+    chatterTimer = null;
+  }
   if (watching) {
     setState(STATE.WATCHING, { sticky: true });
-    showBubble("持续陪伴已开启，我会像搭档一样偶尔看看屏幕。", true);
+    showBubble("持续陪伴已开启，我会像搭档一样偶尔看看屏幕，也会主动找你聊几句。", true);
     observe("manual");
     observeTimer = setInterval(() => observe("interval"), OBSERVE_INTERVAL_MS);
+    chatterTimer = setInterval(() => chatter(), CHATTER_INTERVAL_MS);
   } else {
     clearStickyState();
     showBubble("持续陪伴已暂停。");

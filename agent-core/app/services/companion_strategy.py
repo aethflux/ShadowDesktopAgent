@@ -253,6 +253,32 @@ class CompanionStrategy:
         state.last_user_sentiment = _classify_sentiment(message)
         state.last_interaction_ts = time.time()
 
+    # ---- Proactive chatter cadence -------------------------------------- #
+
+    def should_chatter(self, session_id: str, *, min_interval: float) -> bool:
+        """True if enough time has passed to start a fresh proactive topic."""
+        state = self._state(session_id)
+        return (time.time() - state.last_proactive_ts) >= min_interval
+
+    def next_chatter_source(self, session_id: str, sources: list[str]) -> str:
+        """Round-robin the topic source so memory/time/news take turns."""
+        state = self._state(session_id)
+        source = sources[state.proactive_source_index % len(sources)]
+        state.proactive_source_index += 1
+        return source
+
+    def record_chatter(self, session_id: str, text: str) -> None:
+        """Mark that we just spoke proactively (resets the cadence clock)."""
+        state = self._state(session_id)
+        state.last_proactive_ts = time.time()
+        if text:
+            state.recent_proactive_texts = [*state.recent_proactive_texts[-4:], text]
+
+    def is_recent_chatter(self, session_id: str, text: str) -> bool:
+        """True if we used this exact line in the last few proactive turns."""
+        state = self._state(session_id)
+        return bool(text) and text in state.recent_proactive_texts
+
     def get_state(self, session_id: str) -> dict:
         """Return current engagement metrics for debugging/monitoring."""
         state = self._state(session_id)

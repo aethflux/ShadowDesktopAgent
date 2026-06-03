@@ -91,6 +91,23 @@ class ObservationResponse(ChatResponse):
     significance: Literal["low", "medium", "high"] = "medium"
 
 
+class ChatterRequest(BaseModel):
+    """Ask whether Shadow should proactively start a light topic right now."""
+
+    session_id: str = "pet-companion-session"
+    # User's local hour (0–23), for time-of-day topics. None ⇒ use server time.
+    local_hour: int | None = None
+    # Minutes of continuous presence so far, if the client tracks it.
+    work_minutes: int | None = None
+    trigger: Literal["interval", "manual"] = "interval"
+
+
+class ChatterResponse(BaseModel):
+    reply: str = ""
+    should_speak: bool = False
+    source: Literal["memory", "time", "news", "none"] = "none"
+
+
 class VoiceTTSRequest(BaseModel):
     text: str
     voice: str | None = None

@@ -106,6 +106,24 @@ class Settings(BaseSettings):
     minimax_voice_api_base: str = "https://api.minimax.chat/v1"
     minimax_asr_model: str = "whisper-1"  # whisper-1 or MiniMax's model
 
+    # ---- Proactive companion chatter ----
+    # When 持续陪伴 mode is on, Shadow occasionally starts a light topic on her
+    # own (a memory call-back, a time-of-day note, or a free RSS news headline)
+    # so she feels present even when the screen isn't changing. The desktop
+    # client gates this by real system idle time, so she stays quiet when the
+    # user actually steps away.
+    enable_proactive_chatter: bool = True
+    proactive_min_interval_seconds: int = 270  # ~4.5 min between proactive lines
+    # Free RSS/Atom feeds (no API key) used as a light news source.
+    # Comma-separated; swap for any feeds you like. Fetch/parse failures degrade
+    # gracefully to memory/time topics.
+    news_feeds: str = (
+        "https://news.ycombinator.com/rss,"
+        "https://www.ruanyifeng.com/blog/atom.xml"
+    )
+    news_cache_seconds: int = 1800  # re-fetch headlines at most every 30 min
+    news_fetch_timeout_seconds: int = 8
+
     # ---- UI / paths ----
     desktop_origin: str = "http://localhost:5173"
     memory_dir: Path = Field(default=_AGENT_CORE_ROOT / "memory")

@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld("shadow", {
   // Chat / observation / TTS — proxy to backend.
   chat: (payload: unknown) => ipcRenderer.invoke("agent:chat", payload),
   observe: (payload: unknown) => ipcRenderer.invoke("agent:observe", payload),
+  companionChatter: (payload: unknown) => ipcRenderer.invoke("agent:companion-chatter", payload),
   tts: (payload: unknown) => ipcRenderer.invoke("agent:tts", payload),
   profile: (sessionId: string) => ipcRenderer.invoke("agent:profile", sessionId),
   capabilities: () => ipcRenderer.invoke("agent:capabilities"),
@@ -107,6 +108,7 @@ declare global {
     shadow: {
       chat: (payload: unknown) => Promise<any>;
       observe: (payload: unknown) => Promise<any>;
+      companionChatter: (payload: unknown) => Promise<any>;
       tts: (payload: unknown) => Promise<any>;
       profile: (sessionId: string) => Promise<any>;
       capabilities: () => Promise<any>;

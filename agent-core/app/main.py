@@ -17,6 +17,8 @@ from app.rate_limit import TokenBucketRateLimiter
 from app.schemas import (
     ChatRequest,
     ChatResponse,
+    ChatterRequest,
+    ChatterResponse,
     GeneratedImage,
     ImageGenerateRequest,
     ObservationRequest,
@@ -333,6 +335,7 @@ async def capabilities() -> dict:
                 else "Cloud TTS is enabled and will fall back to browser speech on failure."
             ),
             "semantic_memory": settings.enable_semantic_memory,
+            "proactive_chatter": settings.enable_proactive_chatter,
         },
     }
 
@@ -346,6 +349,12 @@ async def companion_strategy(session_id: str) -> dict:
 @app.post("/api/companion/observe", response_model=ObservationResponse)
 async def observe_screen(request: ObservationRequest) -> ObservationResponse:
     return await orchestrator.observe_screen(request)
+
+
+@app.post("/api/companion/chatter", response_model=ChatterResponse)
+async def companion_chatter(request: ChatterRequest) -> ChatterResponse:
+    """Decide whether Shadow should proactively start a light topic right now."""
+    return await orchestrator.companion_chatter(request)
 
 
 @app.get("/api/persona/presets")

@@ -185,6 +185,24 @@ class LLMAgent:
             {"role": "user", "content": content},
         ]
 
+    async def compose_line(self, instruction: str, context: str = "") -> str:
+        """Single-shot, tool-free generation in this agent's persona.
+
+        Used for short proactive companion lines (a greeting, a memory
+        call-back, a light news mention). Returns ``""`` on any model error so
+        callers can fall back to a template.
+        """
+        user_text = f"{context}\n\n{instruction}".strip() if context else instruction
+        messages = [
+            {"role": "system", "content": self.get_system_prompt()},
+            {"role": "user", "content": user_text},
+        ]
+        try:
+            response = await self.model_client.chat(messages, tools=None)
+            return self.model_client.extract_text(response).strip()
+        except Exception:  # pragma: no cover — defensive; callers fall back
+            return ""
+
     async def handle(
         self,
         message: str,

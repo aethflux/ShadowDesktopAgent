@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 from pathlib import Path
+import re
+import time
 from typing import AsyncIterator
 
 from app.agents.companion import CompanionAgent
@@ -16,6 +19,8 @@ from app.schemas import (
     AgentTrace,
     ChatRequest,
     ChatResponse,
+    ChatterRequest,
+    ChatterResponse,
     IntentMatch,
     MemoryItem,
     ObservationRequest,
@@ -25,6 +30,7 @@ from app.schemas import (
     VoiceTTSRequest,
     VoiceTTSResponse,
 )
+from app.services import news
 from app.services.companion_strategy import CompanionStrategy
 from app.services.context_manager import ContextManager
 from app.services.mcp_client import MCPClient
@@ -571,6 +577,113 @@ class MultiAgentOrchestrator:
             should_speak=should_speak,
             significance=significance,
         )
+
+    async def companion_chatter(self, request: ChatterRequest) -> ChatterResponse:
+        """Proactively start a light topic (memory call-back / time note / news).
+
+        Complements the screen-observation loop, which stays silent when the
+        screen is unchanged: this keeps Shadow feeling present during quiet,
+        steady work. Cadence is gated here so she doesn't natter; the desktop
+        client additionally gates by real system-idle time so she stays quiet
+        when the user actually steps away.
+        """
+        if not settings.enable_proactive_chatter:
+            return ChatterResponse()
+        if request.trigger == "interval" and not self.strategy.should_chatter(
+            request.session_id, min_interval=settings.proactive_min_interval_seconds
+        ):
+            return ChatterResponse()
+
+        source = self.strategy.next_chatter_source(
+            request.session_id, ["memory", "time", "news"]
+        )
+        used_source = source
+        if source == "time":
+            reply = self._time_based_line(request)
+        elif source == "news":
+            reply = await self._news_based_line(request)
+            if not reply:  # news unavailable → fall back to a memory call-back
+                reply = await self._memory_based_line(request)
+                used_source = "memory"
+        else:  # memory
+            reply = await self._memory_based_line(request)
+            if not reply:  # model hiccup → fall back to a time note
+                reply = self._time_based_line(request)
+                used_source = "time"
+
+        reply = self._clean_chatter(reply)
+        # Reset the cadence clock even when we end up silent, so a failed turn
+        # doesn't make us retry on every single tick.
+        if not reply or self.strategy.is_recent_chatter(request.session_id, reply):
+            self.strategy.record_chatter(request.session_id, reply)
+            return ChatterResponse()
+
+        self.strategy.record_chatter(request.session_id, reply)
+        self.memory.append(
+            MemoryItem(
+                session_id=request.session_id,
+                role="assistant",
+                content=f"[chatter/{used_source}] {reply}",
+                tags=["chatter", used_source],
+            )
+        )
+        return ChatterResponse(reply=reply, should_speak=True, source=used_source)
+
+    def _time_based_line(self, request: ChatterRequest) -> str:
+        """A light, template-based note keyed to the time of day (no model call)."""
+        import random
+
+        hour = request.local_hour
+        if hour is None:
+            hour = time.localtime().tm_hour
+        if 5 <= hour < 11:
+            pool = ["早上好呀，今天想先从哪件事开始？", "新的一天开始啦，先喝口水再忙吧。"]
+        elif 11 <= hour < 14:
+            pool = ["到饭点啦，记得吃午饭哦。", "中午了，要不要起来活动下眼睛和肩膀？"]
+        elif 14 <= hour < 18:
+            pool = ["下午状态怎么样？需要我帮你理点什么吗？", "专注一会儿了，适当歇歇会更高效～"]
+        elif 18 <= hour < 23:
+            pool = ["晚上好，今天过得还顺利吗？", "夜里干活也别太拼，注意护眼。"]
+        else:
+            pool = ["这么晚还没休息呀？注意身体，别熬太久。", "夜深了，要不要定个收工的时间点？"]
+        if request.work_minutes and request.work_minutes >= 50:
+            pool.append(f"你已经连着忙了快 {request.work_minutes} 分钟了，起来动动吧。")
+        return random.choice(pool)
+
+    async def _memory_based_line(self, request: ChatterRequest) -> str:
+        """A persona-voiced call-back to something from past conversations."""
+        context = self.context.build_prompt_context(
+            request.session_id, "主动找用户聊一句轻松的话", []
+        )
+        instruction = (
+            "现在主动、自然地跟用户说一句轻松的话，可以呼应你们之前聊过的内容、"
+            "TA 关心的目标或最近的状态。只说一句（30 个汉字以内），口语、亲切，"
+            "不要追问长问题，不要客套或重复套话，保持你的人设称呼和语气。"
+            "直接给出这句话，不要任何解释或引号。"
+        )
+        return await self.agents["companion-agent"].compose_line(instruction, context)
+
+    async def _news_based_line(self, request: ChatterRequest) -> str:
+        """A persona-voiced, light mention of a free RSS headline (or "")."""
+        headline = await news.random_headline()
+        if not headline:
+            return ""
+        instruction = (
+            "下面是一条新闻标题。像朋友随口一提那样，用一句轻松的话主动分享它，"
+            "可以带一点你的看法或好奇，30 个汉字以内，保持你的人设语气，"
+            "不要照抄标题、不要加引号或解释。\n"
+            f"新闻标题：{headline.title}"
+        )
+        return await self.agents["companion-agent"].compose_line(instruction)
+
+    @staticmethod
+    def _clean_chatter(text: str) -> str:
+        """Trim a proactive line to a single clean sentence."""
+        text = (text or "").strip().strip("「」“”\"'")
+        if not text:
+            return ""
+        first = text.splitlines()[0].strip()
+        return first[:80]
 
     def get_profile(self, session_id: str) -> UserProfile:
         return self.memory.load_profile(session_id)

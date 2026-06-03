@@ -1,11 +1,11 @@
 # Shadow Desktop Agent
 
-Shadow 是一个常驻桌面的多模态 Agent。项目由 FastAPI 后端和 Electron 桌面端组成，支持桌宠交互、文本对话、屏幕观察、语音播报、文生图、语义记忆和受控工具调用。
+Shadow 是一个常驻桌面的多模态 Agent。项目由 FastAPI 后端和 Electron 桌面端组成，支持桌宠交互、文本对话、屏幕观察、主动陪聊、语音播报、文生图、语义记忆和受控工具调用。
 
 ## 核心能力
 
 - 桌面端：透明桌宠、独立输入框、控制台、右键菜单和设置页。
-- Agent 后端：意图路由、任务规划、持续陪伴、屏幕观察和工具执行。
+- Agent 后端：意图路由、任务规划、主动陪伴（屏幕观察 + 主动话题）和工具执行。
 - 多模型：文本、视觉、embedding、TTS、文生图可独立配置。
 - 个性化：人设预设与立绘 1:1 绑定；可用 AI（ModelScope 文生图）生成自定义控制台场景与桌宠立绘。
 - 记忆：JSONL 会话历史 + ChromaDB 语义检索。
@@ -137,6 +137,20 @@ IMAGE_MODEL=MusePublic/489_ckpt_FLUX_1     # 换成你的 ModelScope key 能访�
 - 复用 `MODELSCOPE_API_KEY`，走 ModelScope 异步文生图任务；生成图片存到 `artifacts/generated/`。
 - 设置页「AI 生成」：输入提示词 → 生成 → 预览 → 一键应用为当前场景或桌宠立绘，含图库（保存 / 应用 / 删除）。
 - 也暴露为 agent 工具 `image.generate`，可在对话里让桌宠按描述作画。
+
+## 主动陪伴
+
+开启「持续陪伴」后，桌宠不只是看屏幕——屏幕没变化时也会偶尔主动起个轻松话题，陪伴感更真实：
+
+- 话题来源轮换：呼应你的**记忆 / 过往对话**、看**时间与节奏**（早晚问候、久坐提醒）、念一条**免费 RSS 新闻**。
+- 频率克制（默认约 4–5 分钟最多一句），桌面端按系统真实空闲时间判断——你真离开键盘就自动安静。
+- 新闻零成本：用公开 RSS/Atom 源（默认 Hacker News + 阮一峰），无需任何 API key；抓取失败自动退回记忆 / 时间话题。
+
+```env
+ENABLE_PROACTIVE_CHATTER=true
+PROACTIVE_MIN_INTERVAL_SECONDS=270
+NEWS_FEEDS=https://news.ycombinator.com/rss,https://www.ruanyifeng.com/blog/atom.xml
+```
 
 ## 本地验证
 
