@@ -76,8 +76,8 @@ class MemoryStore:
                 continue
         return items
 
-    def summarize(self, session_id: str) -> str:
-        items = self.recent(session_id, limit=8)
+    def summarize(self, session_id: str, limit: int = 8) -> str:
+        items = self.recent(session_id, limit=limit)
         if not items:
             return "No prior memory."
         summary_parts = [f"{item.role}: {item.content[:80]}" for item in items]

@@ -22,6 +22,7 @@ class DesktopAgent(LLMAgent):
     image input."""
 
     name = "desktop-agent"
+    allowed_tool_names = frozenset({"screen.capture"})
 
     def _should_observe_screen(self, message: str) -> bool:
         lowered = message.lower()

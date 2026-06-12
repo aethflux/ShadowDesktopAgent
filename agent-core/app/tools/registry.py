@@ -35,7 +35,8 @@ class ToolRegistry:
             tools.append(ImageGenerateTool())
         self._tools: dict[str, Tool] = {tool.name: tool for tool in tools}
 
-    def specs(self) -> list[dict[str, Any]]:
+    def specs(self, names: list[str] | set[str] | tuple[str, ...] | None = None) -> list[dict[str, Any]]:
+        selected = set(names) if names is not None else None
         return [
             {
                 "type": "function",
@@ -46,6 +47,7 @@ class ToolRegistry:
                 },
             }
             for tool in self._tools.values()
+            if selected is None or tool.name in selected
         ]
 
     def names(self) -> list[str]:

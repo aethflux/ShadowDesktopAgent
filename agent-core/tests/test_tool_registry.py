@@ -52,3 +52,12 @@ def test_registry_has_returns_false_for_unknown() -> None:
     registry = ToolRegistry()
     assert not registry.has("nonexistent")
     assert registry.has("screen.capture")
+
+
+def test_registry_specs_can_be_filtered_by_name() -> None:
+    registry = ToolRegistry()
+
+    specs = registry.specs({"screen.capture"})
+
+    names = [spec["function"]["name"] for spec in specs]
+    assert names == ["screen.capture"]

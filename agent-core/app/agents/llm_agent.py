@@ -94,6 +94,8 @@ def _safe_parse_plan(raw: str) -> dict | None:
 
 class LLMAgent:
     name = "base-agent"
+    allowed_tool_prefixes: tuple[str, ...] = ()
+    allowed_tool_names: frozenset[str] = frozenset()
 
     def __init__(self) -> None:
         self.model_client = ModelClient()
@@ -185,6 +187,23 @@ class LLMAgent:
             {"role": "user", "content": content},
         ]
 
+    def tool_names_for_turn(self, registry: ToolRegistry) -> list[str]:
+        """Return the tool names this agent should expose to the model.
+
+        Tool execution is still checked by ``ToolRegistry`` and each tool's
+        policy. This method is about context hygiene: smaller, role-specific
+        tool schemas reduce prompt noise and improve provider prompt-cache
+        reuse compared with exposing every installed tool to every agent.
+        """
+        names = registry.names()
+        if not self.allowed_tool_names and not self.allowed_tool_prefixes:
+            return names
+        return [
+            name for name in names
+            if name in self.allowed_tool_names
+            or any(name.startswith(prefix) for prefix in self.allowed_tool_prefixes)
+        ]
+
     async def compose_line(self, instruction: str, context: str = "") -> str:
         """Single-shot, tool-free generation in this agent's persona.
 
@@ -256,7 +275,10 @@ class LLMAgent:
         max_iterations = max(1, int(settings.max_tool_iterations))
         try:
             for _ in range(max_iterations):
-                response = await self.model_client.chat(messages, tools=registry.specs())
+                response = await self.model_client.chat(
+                    messages,
+                    tools=registry.specs(self.tool_names_for_turn(registry)),
+                )
                 assistant_message = self.model_client.extract_message(response)
                 raw_tool_calls = assistant_message.get("tool_calls") or []
 

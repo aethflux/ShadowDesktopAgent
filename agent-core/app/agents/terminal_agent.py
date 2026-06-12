@@ -15,6 +15,17 @@ class TerminalAgent(LLMAgent):
     rooted in code rather than in user-editable persona text."""
 
     name = "terminal-agent"
+    allowed_tool_names = frozenset({
+        "terminal.run",
+        "terminal.reset",
+        "cli.run",
+        "skill.list",
+        "skill.create",
+        "skill.install_from_url",
+        "mcp.servers",
+        "mcp.list_tools",
+    })
+    allowed_tool_prefixes = ("mcp.",)
 
     def get_system_prompt(self) -> str:
         base = super().get_system_prompt()

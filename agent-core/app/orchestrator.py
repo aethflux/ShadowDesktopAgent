@@ -274,20 +274,21 @@ class MultiAgentOrchestrator:
         # Feed user message to the companion strategy for sentiment tracking
         # and future nudge tone decisions.
         self.strategy.record_message(request.session_id, request.message)
-        self.memory.append(
-            MemoryItem(session_id=request.session_id, role="user", content=request.message)
-        )
         self.memory.update_profile_from_message(request.session_id, request.message)
-        prompt_context = self.context.build_prompt_context(
-            request.session_id,
-            request.message,
-            request.attachments,
-        )
 
         trace, _local_intent = await self._route(
             request.message, has_attachments=bool(request.attachments),
         )
         delegated = trace.delegated_to or "companion-agent"
+        prompt_context = self.context.build_for_agent(
+            delegated,
+            request.session_id,
+            request.message,
+            request.attachments,
+        )
+        self.memory.append(
+            MemoryItem(session_id=request.session_id, role="user", content=request.message)
+        )
         reply, tool_calls = await self.agents[delegated].handle(
             message=request.message,
             registry=self.registry,
@@ -335,18 +336,21 @@ class MultiAgentOrchestrator:
         yield {"event": "start", "data": {"session_id": request.session_id, "message": request.message}}
 
         self.strategy.record_message(request.session_id, request.message)
-        self.memory.append(
-            MemoryItem(session_id=request.session_id, role="user", content=request.message)
-        )
         self.memory.update_profile_from_message(request.session_id, request.message)
-        prompt_context = self.context.build_prompt_context(
-            request.session_id, request.message, request.attachments,
-        )
 
         trace, local_intent = await self._route(
             request.message, has_attachments=bool(request.attachments),
         )
         delegated = trace.delegated_to or "companion-agent"
+        prompt_context = self.context.build_for_agent(
+            delegated,
+            request.session_id,
+            request.message,
+            request.attachments,
+        )
+        self.memory.append(
+            MemoryItem(session_id=request.session_id, role="user", content=request.message)
+        )
 
         yield {
             "event": "intent",
@@ -484,7 +488,8 @@ class MultiAgentOrchestrator:
         # Ask the strategy engine whether we should proactively speak.
         nudge = self.strategy.decide_nudge(request)
 
-        profile_context = self.context.build_prompt_context(
+        profile_context = self.context.build_for_agent(
+            "desktop-agent",
             request.session_id,
             request.focus or "持续观察当前屏幕，像数字分身一样自然评论。",
             [],
@@ -652,8 +657,11 @@ class MultiAgentOrchestrator:
 
     async def _memory_based_line(self, request: ChatterRequest) -> str:
         """A persona-voiced call-back to something from past conversations."""
-        context = self.context.build_prompt_context(
-            request.session_id, "主动找用户聊一句轻松的话", []
+        context = self.context.build_for_agent(
+            "companion-agent",
+            request.session_id,
+            "主动找用户聊一句轻松的话",
+            [],
         )
         instruction = (
             "现在主动、自然地跟用户说一句轻松的话，可以呼应你们之前聊过的内容、"

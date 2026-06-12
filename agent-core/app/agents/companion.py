@@ -9,3 +9,9 @@ class CompanionAgent(LLMAgent):
     can swap personas from the settings UI without touching this file."""
 
     name = "companion-agent"
+    allowed_tool_names = frozenset({
+        "image.generate",
+        "skill.list",
+        "mcp.servers",
+        "mcp.list_tools",
+    })
