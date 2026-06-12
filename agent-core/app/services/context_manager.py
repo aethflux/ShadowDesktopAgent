@@ -60,22 +60,40 @@ class ContextManager:
         user_message: str,
         attachments: list[ChatAttachment],
         tool_names: list[str],
+        session_id: str | None = None,
     ) -> str:
         """Small, stable routing context.
 
         The router should not see the full memory pack: past memories can bias
-        intent classification and they also waste tokens. Keep this limited to
-        the current turn, attachment signal and available tool names.
+        intent classification and they also waste tokens. What it *does* need
+        is dialogue state — the last few raw turns — so a signal-free
+        follow-up like "再跑一次" can be disambiguated. Long-term memory
+        (semantic recall, profile) stays excluded.
         """
         attachment_summary = ", ".join(
             attachment.path or attachment.mime_type or "inline-image"
             for attachment in attachments
         ) or "none"
-        return (
-            f"User message: {user_message}\n"
-            f"Attachments: {attachment_summary}\n"
-            f"Available tools: {', '.join(tool_names)}"
-        )
+        parts = [
+            f"User message: {user_message}",
+            f"Attachments: {attachment_summary}",
+            f"Available tools: {', '.join(tool_names)}",
+        ]
+        if session_id:
+            dialogue = self._recent_dialogue(session_id)
+            if dialogue:
+                parts.append(f"Recent dialogue (oldest first):\n{dialogue}")
+        return "\n".join(parts)
+
+    def _recent_dialogue(self, session_id: str, max_items: int = 6) -> str:
+        """Last few plain chat turns; observation/chatter noise is excluded."""
+        items = self.memory_store.recent(session_id, limit=max_items * 2)
+        lines = [
+            f"{item.role}: {item.content[:80]}"
+            for item in items
+            if not {"observation", "chatter"} & set(item.tags or [])
+        ]
+        return "\n".join(lines[-max_items:])
 
     def build_for_agent(
         self,

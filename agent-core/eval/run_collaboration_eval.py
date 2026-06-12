@@ -27,9 +27,6 @@ import sys
 from pathlib import Path
 
 from app.agents.router import RouterAgent
-from app.agents.desktop import DesktopAgent
-from app.agents.companion import CompanionAgent
-from app.agents.terminal_agent import TerminalAgent
 from app.schemas import ChatAttachment, MemoryItem
 from app.services.memory import MemoryStore
 

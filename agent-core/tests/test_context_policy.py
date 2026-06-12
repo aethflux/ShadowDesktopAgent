@@ -60,3 +60,32 @@ def test_router_context_excludes_memory_pack(tmp_path: Path) -> None:
     assert "Available tools: screen.capture, terminal.run" in context
     assert "Recent memory" not in context
     assert "Semantically related memories" not in context
+
+
+def test_router_context_includes_dialogue_state(tmp_path: Path, tmp_session_id: str) -> None:
+    """Dialogue state (raw recent turns) is a routing input; the long-term
+    memory pack and observation noise stay excluded."""
+    manager = _context_manager(tmp_path)
+    manager.memory_store.append(
+        MemoryItem(session_id=tmp_session_id, role="user", content="帮我跑 pytest")
+    )
+    manager.memory_store.append(
+        MemoryItem(
+            session_id=tmp_session_id,
+            role="assistant",
+            content="[observation/interval] 屏幕没什么变化",
+            tags=["observation", "low"],
+        )
+    )
+
+    context = manager.build_for_router(
+        "再跑一次",
+        [],
+        ["terminal.run"],
+        session_id=tmp_session_id,
+    )
+
+    assert "Recent dialogue" in context
+    assert "帮我跑 pytest" in context
+    assert "屏幕没什么变化" not in context
+    assert "Semantically related memories" not in context

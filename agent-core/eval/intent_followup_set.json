@@ -1,0 +1,14 @@
+[
+  {"previous_delegate": "terminal-agent", "message": "再跑一次", "expected_delegate": "terminal-agent", "note": "retry after a terminal run"},
+  {"previous_delegate": "terminal-agent", "message": "继续", "expected_delegate": "terminal-agent", "note": "bare continuation"},
+  {"previous_delegate": "terminal-agent", "message": "重新来一遍", "expected_delegate": "terminal-agent", "note": "retry phrasing without keywords"},
+  {"previous_delegate": "terminal-agent", "message": "嗯，然后呢", "expected_delegate": "terminal-agent", "note": "prompting the next step"},
+  {"previous_delegate": "terminal-agent", "message": "就按你说的做", "expected_delegate": "terminal-agent", "note": "approving the proposed action"},
+  {"previous_delegate": "desktop-agent", "message": "再来一次", "expected_delegate": "desktop-agent", "note": "repeat the last observation"},
+  {"previous_delegate": "desktop-agent", "message": "刚才那个呢", "expected_delegate": "desktop-agent", "note": "anaphor to the previous result"},
+  {"previous_delegate": "companion-agent", "message": "继续", "expected_delegate": "companion-agent", "note": "sticky no-op on the default agent"},
+  {"previous_delegate": "terminal-agent", "message": "帮我截个图", "expected_delegate": "desktop-agent", "note": "decisive keyword must override sticky"},
+  {"previous_delegate": "terminal-agent", "message": "陪我聊聊吧", "expected_delegate": "companion-agent", "note": "conversation signal must override sticky"},
+  {"previous_delegate": "desktop-agent", "message": "帮我跑一下 pytest", "expected_delegate": "terminal-agent", "note": "decisive keyword must override sticky"},
+  {"previous_delegate": null, "message": "继续", "expected_delegate": "companion-agent", "note": "no previous turn falls back to default"}
+]

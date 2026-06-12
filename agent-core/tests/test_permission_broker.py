@@ -197,7 +197,7 @@ async def _fake_chat_terminal_outside(self, messages, tools=None, tool_choice="a
     }
 
 
-async def _fake_plan(self, message, tools, local_intent):
+async def _fake_plan(self, message, tools, local_intent, **_kwargs):
     return None
 
 

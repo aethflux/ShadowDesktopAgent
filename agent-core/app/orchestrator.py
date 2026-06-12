@@ -17,6 +17,7 @@ from app.config import settings
 from app.logging import get_logger
 from app.schemas import (
     AgentTrace,
+    ChatAttachment,
     ChatRequest,
     ChatResponse,
     ChatterRequest,
@@ -128,6 +129,9 @@ class MultiAgentOrchestrator:
         self.mcp = MCPClient()
         self.registry = ToolRegistry(self.mcp)
         self.strategy = CompanionStrategy()
+        # Last delegated agent per session — the dialogue state behind sticky
+        # routing. In-memory like CompanionStrategy's session state.
+        self._session_last_delegate: dict[str, str] = {}
         self.agents = {
             "companion-agent": CompanionAgent(),
             "desktop-agent": DesktopAgent(),
@@ -252,7 +256,11 @@ class MultiAgentOrchestrator:
         return "completed"
 
     async def _route(
-        self, message: str, has_attachments: bool
+        self,
+        message: str,
+        has_attachments: bool = False,
+        session_id: str = "default",
+        attachments: list[ChatAttachment] | None = None,
     ) -> tuple[AgentTrace, IntentMatch]:
         """Classify intent, consulting the LLM router only when needed.
 
@@ -261,13 +269,43 @@ class MultiAgentOrchestrator:
         keyword — saving one model call per turn. Ambiguous or vague messages
         (multi-intent, no strong keyword) still get the LLM tiebreaker, which
         is exactly where it earns its cost.
+
+        Routing is dialogue-state aware. The LLM tiebreaker sees the last few
+        raw turns plus which agent handled the previous one; and when the
+        tiebreaker is unavailable, a signal-free message falls back to that
+        previous agent (sticky) instead of the generic default — "再跑一次"
+        should stay with the terminal agent, not become small talk. The
+        signal-free case is exactly the case that needs dialogue context, so
+        the expensive path is only paid where it helps.
         """
         local_intent = self.router.classify_local(message, has_attachments=has_attachments)
+        previous_delegate = self._session_last_delegate.get(session_id)
         if settings.router_skip_plan_when_decisive and local_intent.decisive:
             model_plan = None
         else:
-            model_plan = await self.router.plan(message, self.registry.names(), local_intent)
+            routing_context = self.context.build_for_router(
+                message, attachments or [], self.registry.names(), session_id=session_id
+            )
+            model_plan = await self.router.plan(
+                message,
+                self.registry.names(),
+                local_intent,
+                routing_context=routing_context,
+                previous_delegate=previous_delegate,
+            )
         trace = self.planner.merge_intents(local_intent, model_plan)
+        if model_plan is None and settings.router_sticky_fallback:
+            delegated, source = RouterAgent.resolve_delegate(local_intent, previous_delegate)
+            if source == "sticky" and delegated != trace.delegated_to:
+                trace = AgentTrace(
+                    active_agent="planner",
+                    delegated_to=delegated,
+                    reasoning=(
+                        f"{trace.reasoning} Sticky fallback: signal-free follow-up "
+                        f"stays with {delegated}."
+                    ),
+                )
+        self._session_last_delegate[session_id] = trace.delegated_to or "companion-agent"
         return trace, local_intent
 
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
@@ -277,7 +315,10 @@ class MultiAgentOrchestrator:
         self.memory.update_profile_from_message(request.session_id, request.message)
 
         trace, _local_intent = await self._route(
-            request.message, has_attachments=bool(request.attachments),
+            request.message,
+            has_attachments=bool(request.attachments),
+            session_id=request.session_id,
+            attachments=request.attachments,
         )
         delegated = trace.delegated_to or "companion-agent"
         prompt_context = self.context.build_for_agent(
@@ -339,7 +380,10 @@ class MultiAgentOrchestrator:
         self.memory.update_profile_from_message(request.session_id, request.message)
 
         trace, local_intent = await self._route(
-            request.message, has_attachments=bool(request.attachments),
+            request.message,
+            has_attachments=bool(request.attachments),
+            session_id=request.session_id,
+            attachments=request.attachments,
         )
         delegated = trace.delegated_to or "companion-agent"
         prompt_context = self.context.build_for_agent(

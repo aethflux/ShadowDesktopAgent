@@ -165,6 +165,13 @@ class Settings(BaseSettings):
     # but ~2x routing cost). Multi-intent / vague messages are never treated
     # as decisive, so they still get the LLM second opinion.
     router_skip_plan_when_decisive: bool = True
+    # Sticky fallback for follow-ups: when the local classifier finds *no*
+    # keyword signal (typically a short continuation like "再跑一次"/"继续")
+    # and the LLM tiebreaker is unavailable, stay with the agent that handled
+    # the previous turn instead of dumping the message to the default
+    # companion. Dialogue state — unlike long-term memory — is a legitimate
+    # routing input; without it, signal-free follow-ups always misroute.
+    router_sticky_fallback: bool = True
 
     # ---- Workspace permission broker ----
     # When the agent needs to access a directory outside the project workspace,

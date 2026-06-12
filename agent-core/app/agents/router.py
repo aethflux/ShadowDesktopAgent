@@ -179,6 +179,8 @@ class RouterAgent:
         message: str,
         tool_names: list[str],
         local_intent: IntentMatch,
+        routing_context: str | None = None,
+        previous_delegate: str | None = None,
     ) -> dict | None:
         system_prompt = (
             "You are an intent classifier for a desktop digital companion multi-agent system. "
@@ -188,11 +190,19 @@ class RouterAgent:
             "delegated_to must be one of companion-agent, desktop-agent, terminal-agent. "
             "Prefer desktop-agent only for screen observation or continuous companion screen watching. "
             "Prefer terminal-agent for code execution, shell commands, build/test/debug tasks. "
-            "Prefer companion-agent for persona, voice, memory/profile, and normal conversation."
+            "Prefer companion-agent for persona, voice, memory/profile, and normal conversation. "
+            "Short follow-ups that only make sense given the recent dialogue (e.g. '再跑一次', "
+            "'继续', 'do it again') belong to the agent that handled the previous turn."
+        )
+        context_block = routing_context or (
+            f"User message: {message}\nAvailable tools: {tool_names}"
+        )
+        previous_block = (
+            f"Previous turn was handled by: {previous_delegate}\n" if previous_delegate else ""
         )
         user_prompt = (
-            f"User message: {message}\n"
-            f"Available tools: {tool_names}\n"
+            f"{context_block}\n"
+            f"{previous_block}"
             f"Local classifier result: {local_intent.model_dump()}\n"
             "Classify the user's intent. If local and model disagree, explain why."
         )
@@ -200,6 +210,22 @@ class RouterAgent:
             return await self.model_client.complete_structured(system_prompt, user_prompt)
         except Exception:
             return None
+
+    @staticmethod
+    def resolve_delegate(
+        local_intent: IntentMatch, previous_delegate: str | None
+    ) -> tuple[str, str]:
+        """Final delegate for a turn when no model plan is available.
+
+        Sticky fallback: a message with no keyword signal at all is usually a
+        follow-up to the previous turn ("再跑一次", "继续") — keep it with the
+        agent that handled that turn rather than the generic default. Any real
+        keyword signal, and any decisive match, keeps the local decision.
+        Returns ``(delegate, source)`` where source is "sticky" or "local".
+        """
+        if previous_delegate and not local_intent.signals and not local_intent.decisive:
+            return previous_delegate, "sticky"
+        return local_intent.delegated_to, "local"
 
     @staticmethod
     def _keyword_weight(keyword: str) -> float:

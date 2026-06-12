@@ -87,10 +87,51 @@ def evaluate(min_accuracy: float, challenge_floor: float) -> int:
             print("\n  Challenge misses (these map the router's real boundary):")
             _print_failures(c_failures)
 
+    # ---- Follow-up set: dialogue-state routing (sticky fallback). -------- #
+    # These messages carry no keyword signal at all; correct routing depends
+    # on which agent handled the previous turn. The stateless baseline shows
+    # what the router did before sticky resolution existed.
+    followup_path = base / "intent_followup_set.json"
+    followup_acc = 1.0
+    if followup_path.exists():
+        followups = load_testset(followup_path)
+        sticky_hits = 0
+        stateless_hits = 0
+        f_failures: list[tuple[dict, str]] = []
+        for case in followups:
+            local = router.classify_local(case["message"])
+            delegated, _source = RouterAgent.resolve_delegate(
+                local, case.get("previous_delegate")
+            )
+            if delegated == case["expected_delegate"]:
+                sticky_hits += 1
+            else:
+                f_failures.append((case, delegated))
+            if local.delegated_to == case["expected_delegate"]:
+                stateless_hits += 1
+        f_total = len(followups)
+        followup_acc = sticky_hits / f_total
+        print(f"\nIntent router eval — FOLLOW-UP — {f_total} dialogue-state cases")
+        print(f"  stateless baseline : {stateless_hits}/{f_total} = {stateless_hits / f_total:.1%}")
+        print(f"  sticky resolution  : {sticky_hits}/{f_total} = {followup_acc:.1%}")
+        if f_failures:
+            print("\n  Follow-up misses:")
+            for case, got in f_failures:
+                print(
+                    f"  - '{case['message'][:46]}' (prev={case.get('previous_delegate')}) "
+                    f"exp {case['expected_delegate']}, got {got}  [{case.get('note', '')}]"
+                )
+
     # ---- Gate decision -------------------------------------------------- #
     exit_code = 0
     if delegate_acc < min_accuracy:
         print(f"\nFAIL: core delegate accuracy {delegate_acc:.1%} below threshold {min_accuracy:.1%}")
+        exit_code = 1
+    if followup_acc < min_accuracy:
+        print(
+            f"\nFAIL: follow-up delegate accuracy {followup_acc:.1%} "
+            f"below threshold {min_accuracy:.1%}"
+        )
         exit_code = 1
     # The challenge floor is a soft regression guard: it only trips if the
     # router gets *dramatically* worse on hard cases. Default 0.0 = report-only.

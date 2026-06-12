@@ -32,7 +32,7 @@ async def _fake_chat(self, messages, tools=None, tool_choice="auto", temperature
     }
 
 
-async def _fake_plan(self, message, tools, local_intent):
+async def _fake_plan(self, message, tools, local_intent, **_kwargs):
     return None  # planner falls back to local intent
 
 
