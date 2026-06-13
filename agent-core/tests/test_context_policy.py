@@ -43,8 +43,8 @@ def test_agent_context_policies_are_distinct(tmp_path: Path, tmp_session_id: str
     assert "Context policy for companion-agent" in companion_context
     assert "Context policy for terminal-agent" in terminal_context
     assert "Context policy for desktop-agent" in desktop_context
-    assert "tool-related context" in terminal_context
-    assert "visible screen state" in desktop_context
+    assert "tool-related context" in terminal_context  # terminal guidance stays English
+    assert "可见的屏幕状态" in desktop_context
 
 
 def test_router_context_excludes_memory_pack(tmp_path: Path) -> None:

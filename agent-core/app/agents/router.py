@@ -182,17 +182,20 @@ class RouterAgent:
         routing_context: str | None = None,
         previous_delegate: str | None = None,
     ) -> dict | None:
+        # Instructions are Chinese (the deployment model is Chinese-primary);
+        # the JSON key names, the intent/delegate enum values and agent ids are
+        # literal contract tokens the parser depends on, so they stay English.
         system_prompt = (
-            "You are an intent classifier for a desktop digital companion multi-agent system. "
-            "Return strict JSON with keys: intent, delegated_to, confidence, reasoning, tool_candidates. "
-            "intent must be one of conversation, screen_observation, continuous_companion, terminal, "
-            "coding, memory_profile, persona, voice, unknown. "
-            "delegated_to must be one of companion-agent, desktop-agent, terminal-agent. "
-            "Prefer desktop-agent only for screen observation or continuous companion screen watching. "
-            "Prefer terminal-agent for code execution, shell commands, build/test/debug tasks. "
-            "Prefer companion-agent for persona, voice, memory/profile, and normal conversation. "
-            "Short follow-ups that only make sense given the recent dialogue (e.g. '再跑一次', "
-            "'继续', 'do it again') belong to the agent that handled the previous turn."
+            "你是一个桌面数字陪伴多智能体系统的意图分类器。"
+            "返回严格 JSON，键为：intent, delegated_to, confidence, reasoning, tool_candidates。"
+            "intent 必须是以下之一：conversation, screen_observation, continuous_companion, "
+            "terminal, coding, memory_profile, persona, voice, unknown。"
+            "delegated_to 必须是以下之一：companion-agent, desktop-agent, terminal-agent。"
+            "仅当任务是屏幕观察或持续陪伴看屏时才选 desktop-agent。"
+            "代码执行、shell 命令、构建/测试/调试任务选 terminal-agent。"
+            "人设、语音、记忆/画像以及普通对话选 companion-agent。"
+            "只有结合最近对话才说得通的简短续话（例如「再跑一次」「继续」「do it again」），"
+            "归属于处理上一轮的那个 agent。"
         )
         context_block = routing_context or (
             f"User message: {message}\nAvailable tools: {tool_names}"

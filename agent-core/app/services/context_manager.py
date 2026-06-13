@@ -10,8 +10,7 @@ _AGENT_CONTEXT_POLICY: dict[str, dict[str, object]] = {
         "include_profile": True,
         "include_skills": True,
         "guidance": (
-            "Use profile and memory for continuity, but do not repeat old details unless they help "
-            "the current reply."
+            "结合画像和记忆保持连贯，但除非对当前回复有帮助，否则不要重复旧细节。"
         ),
     },
     "terminal-agent": {
@@ -30,8 +29,8 @@ _AGENT_CONTEXT_POLICY: dict[str, dict[str, object]] = {
         "include_profile": True,
         "include_skills": False,
         "guidance": (
-            "Prioritize visible screen state, prior observation topic and user preferences. Keep "
-            "comments concise and avoid repeating previous observations."
+            "优先关注当前可见的屏幕状态、上一个观察主题和用户偏好。"
+            "评论保持简短，避免重复之前的观察。"
         ),
     },
 }

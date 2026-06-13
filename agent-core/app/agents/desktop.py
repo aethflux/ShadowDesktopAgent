@@ -92,15 +92,14 @@ class DesktopAgent(LLMAgent):
             f"Current request: {message}\n"
             f"Previous observation topic: {observation_state.last_topic or 'none'}\n"
             f"Previous comment: {observation_state.last_comment or 'none'}\n"
-            "Decision rules:\n"
-            "- If this is an interval observation and the screen is still the same app/task, "
-            "or your comment would mostly repeat the previous comment, return reply=\"\", "
-            "significance=\"low\", should_speak=false.\n"
-            "- Do not paraphrase the previous comment just to say something.\n"
-            "- If you do speak, mention one new visible detail or one useful next step, "
-            "and keep the wording in your configured persona.\n"
-            "- Avoid generic filler such as 'I looked at the screen' when there is no new information.\n"
-            "Look at the screenshot and decide whether Shadow should say something now."
+            "判断规则：\n"
+            "- 如果这是定时观察、屏幕仍是同一应用/同一任务，或你的评论基本只是在重复上一条，"
+            "就返回 reply=\"\"、significance=\"low\"、should_speak=false。\n"
+            "- 不要只为了说点什么而把上一条换个说法重复。\n"
+            "- 如果确实要说，就点出一个新出现的可见细节或一个有用的下一步，"
+            "并保持你设定人格的措辞。\n"
+            "- 没有新信息时，避免「我看了一下屏幕」这类空话。\n"
+            "看一下截图，判断 Shadow 现在是否该说点什么。"
         )
         messages = [
             {"role": "system", "content": system_prompt},
